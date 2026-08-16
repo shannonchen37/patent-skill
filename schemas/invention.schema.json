@@ -1,0 +1,5 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Invention Candidate","type":"object",
+  "required":["invention_id","title","features"],"properties":{"invention_id":{"type":"string","pattern":"^P[0-9]{3,}$"},
+  "title":{"type":"string"},"features":{"type":"array","items":{"type":"string","pattern":"^F[0-9]{3,}$"}},
+  "technical_solution_status":{"enum":["PASS","CONDITIONAL","NEEDS_REVIEW","FAIL_FOR_CURRENT_FORM"]}},"additionalProperties":true}

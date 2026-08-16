@@ -1,0 +1,26 @@
+from patent_skill.models import (
+    ClaimSnapshot,
+    EngineeringProvenance,
+    ProvenanceStatus,
+    SearchSnapshot,
+)
+
+
+def test_developer_confirmed_requires_confirmation() -> None:
+    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.DEVELOPER_CONFIRMED)
+    assert record.validate()
+    record.inventor_confirmation = True
+    assert record.validate() == []
+
+
+def test_proposed_requires_enablement_review() -> None:
+    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.PROPOSED)
+    assert record.validate()
+
+
+def test_claim_and_search_snapshots_are_hashed() -> None:
+    claims = ClaimSnapshot("CLAIMS-V1", 1, {"C1": "a claim"}, "SEARCH-1")
+    search = SearchSnapshot("SEARCH-1", ["CNIPA"], ["q"], ["D1"])
+    assert len(claims.content_hash) == 64
+    assert len(search.query_log_hash) == 64
+    assert claims.based_on_search_snapshot_id == search.search_snapshot_id

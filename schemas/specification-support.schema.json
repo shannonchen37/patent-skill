@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Specification Support",
+  "type": "array", "items": {"type": "object", "required": ["claim_id", "feature_id", "status"],
+  "properties": {"claim_id": {"type": "string"}, "feature_id": {"type": "string"},
+  "specification_paragraph": {"type": ["string", "null"]}, "embodiment": {"type": ["string", "null"]},
+  "figure": {"type": ["string", "null"]}, "status": {"enum": ["strong", "medium", "weak", "missing"]}}}}

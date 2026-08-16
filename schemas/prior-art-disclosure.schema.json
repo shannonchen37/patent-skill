@@ -1,0 +1,4 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Prior Art Disclosure","type":"array",
+  "items":{"type":"object","required":["feature_id","reference_id","status"],"properties":{"feature_id":{"type":"string"},
+  "reference_id":{"type":"string"},"location":{"type":["string","null"]},"status":{"enum":["YES","NO","PARTIAL","UNKNOWN"]}}}}

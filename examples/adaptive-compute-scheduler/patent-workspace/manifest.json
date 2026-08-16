@@ -1,0 +1,11 @@
+{
+  "jurisdiction": "CN",
+  "ruleset_version": "2026-01-01",
+  "skill_version": "unversioned",
+  "last_reviewed": "2026-08-16",
+  "legal_sources": [
+    "https://www.cnipa.gov.cn/art/2020/11/23/art_524_171347.html",
+    "https://www.cnipa.gov.cn/art/2023/12/21/art_98_189197.html",
+    "https://www.cnipa.gov.cn/art/2025/11/13/art_99_202568.html"
+  ]
+}

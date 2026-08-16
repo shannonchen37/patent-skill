@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Priority Basis",
+  "type": "array", "items": {"type": "object", "required": ["claim_id", "feature_id", "status"],
+  "properties": {"claim_id": {"type": "string"}, "feature_id": {"type": "string"},
+  "priority_document": {"type": ["string", "null"]}, "basis": {"type": ["string", "null"]},
+  "status": {"enum": ["supported", "partial", "missing", "review-required"]}}}}

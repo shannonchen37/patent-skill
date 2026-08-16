@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "patent-skill"
+version = "0.0.0"
+description = "Turn R&D evidence into traceable, reviewable patent drafting assets."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "shannonchen37"}]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/shannonchen37/patent-skill"
+Repository = "https://github.com/shannonchen37/patent-skill.git"
+Issues = "https://github.com/shannonchen37/patent-skill/issues"
+
+[project.optional-dependencies]
+docx = ["python-docx>=1.1"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+patent-skill = "patent_skill.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["patent_skill"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

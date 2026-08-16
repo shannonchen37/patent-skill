@@ -1,0 +1,5 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Preliminary Claim Skeleton","type":"object",
+  "required":["claim_skeleton_id","category","features","status"],"properties":{"claim_skeleton_id":{"type":"string","pattern":"^CS[0-9]{2,}$"},
+  "category":{"enum":["method","system","device","storage-medium","computer-program-product"]},
+  "features":{"type":"array","items":{"type":"string"}},"status":{"const":"preliminary"}},"additionalProperties":false}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Search Snapshot",
+  "type": "object",
+  "required": ["search_snapshot_id", "databases", "queries", "reference_ids", "query_log_hash", "reference_set_hash"],
+  "properties": {
+    "search_snapshot_id": {"type": "string"}, "databases": {"type": "array", "items": {"type": "string"}},
+    "queries": {"type": "array", "items": {"type": "string"}},
+    "reference_ids": {"type": "array", "items": {"type": "string"}},
+    "searched_at": {"type": "string"}, "query_log_hash": {"type": "string", "minLength": 64},
+    "reference_set_hash": {"type": "string", "minLength": 64}
+  },
+  "additionalProperties": false
+}

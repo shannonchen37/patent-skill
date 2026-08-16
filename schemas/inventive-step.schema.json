@@ -1,0 +1,7 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Inventive Step Analysis","type":"object",
+  "required":["analysis_subject_id","search_snapshot_id","closest_prior_art","distinguishing_features","risk"],
+  "properties":{"analysis_subject_id":{"type":"string"},"claim_set_id":{"type":["string","null"]},"search_snapshot_id":{"type":"string"},
+  "closest_prior_art":{"type":["string","null"]},"distinguishing_features":{"type":"array","items":{"type":"string"}},
+  "technical_effects":{"type":"array","items":{"type":"string"}},"actual_technical_problem":{"type":"string"},
+  "combination_motivation":{"type":"string"},"risk":{"enum":["low","medium","high","unknown"]}},"additionalProperties":true}

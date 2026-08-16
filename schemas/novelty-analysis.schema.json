@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Novelty Analysis","type":"object",
+  "required":["analysis_subject_id","claim_set_id","search_snapshot_id","references"],"properties":{"analysis_subject_id":{"type":"string"},
+  "claim_set_id":{"type":["string","null"]},"search_snapshot_id":{"type":"string"},"references":{"type":"array","items":{"type":"object",
+  "required":["reference_id","all_features_disclosed","missing_features"],"properties":{"reference_id":{"type":"string"},
+  "all_features_disclosed":{"type":"boolean"},"missing_features":{"type":"array","items":{"type":"string"}}}}}},"additionalProperties":true}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Claim Snapshot",
+  "type": "object",
+  "required": ["claim_set_id", "version", "claims", "content_hash"],
+  "properties": {
+    "claim_set_id": {"type": "string"}, "version": {"type": "integer", "minimum": 1},
+    "claims": {"type": "object", "additionalProperties": {"type": "string"}},
+    "based_on_search_snapshot_id": {"type": ["string", "null"]},
+    "created_at": {"type": "string"}, "content_hash": {"type": "string", "minLength": 64}
+  },
+  "additionalProperties": false
+}

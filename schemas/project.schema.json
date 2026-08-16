@@ -1,0 +1,4 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Project","type":"object",
+  "required":["name"],"properties":{"name":{"type":"string","minLength":1},"root":{"type":"string"},
+  "target":{"enum":["CN-invention","CN-utility-model","undecided"]}},"additionalProperties":true}

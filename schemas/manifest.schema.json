@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Workspace Manifest",
+  "type": "object", "required": ["jurisdiction", "ruleset_version", "skill_version"],
+  "properties": {"jurisdiction": {"const": "CN"}, "ruleset_version": {"type": "string"},
+  "skill_version": {"type": "string"}, "legal_sources": {"type": "array", "items": {"type": "string"}},
+  "last_reviewed": {"type": "string"}}, "additionalProperties": true}

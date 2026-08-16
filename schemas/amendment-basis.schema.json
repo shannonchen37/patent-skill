@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Amendment Basis",
+  "type": "array", "items": {"type": "object", "required": ["potential_amendment"],
+  "properties": {"potential_amendment": {"type": "string"},
+  "specification_paragraph": {"type": ["string", "null"]}, "original_claim": {"type": ["string", "null"]},
+  "figure": {"type": ["string", "null"]}, "embodiment": {"type": ["string", "null"]}}}}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://patent-skill.dev/schemas/engineering-provenance.schema.json",
+  "title": "Engineering Provenance",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["feature_id", "invention_id", "feature", "status", "evidence"],
+    "properties": {
+      "feature_id": {"type": "string", "pattern": "^F[0-9]{3,}$"},
+      "invention_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
+      "feature": {"type": "string", "minLength": 1},
+      "status": {
+        "enum": ["code-supported", "document-supported", "experiment-supported", "developer-confirmed", "proposed-but-enabled", "insufficiently-supported", "contradicted"]
+      },
+      "inventor_confirmation": {"type": "boolean"},
+      "enablement_review_required": {"type": "boolean"},
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type", "path", "explanation"],
+          "properties": {
+            "type": {"type": "string"}, "path": {"type": "string"},
+            "symbol": {"type": "string"}, "start_line": {"type": "integer", "minimum": 0},
+            "end_line": {"type": "integer", "minimum": 0}, "explanation": {"type": "string"},
+            "classification": {"enum": ["internal-only", "drafting-usable", "filing-disclosable", "redaction-required"]}
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "additionalProperties": true
+  }
+}

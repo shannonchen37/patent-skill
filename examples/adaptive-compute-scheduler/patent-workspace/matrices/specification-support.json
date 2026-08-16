@@ -1,0 +1,5 @@
+[
+  {"claim_id":"C1","feature_id":"F001","specification_paragraph":"[0008]","embodiment":"E1","figure":"图1","status":"strong"},
+  {"claim_id":"C1","feature_id":"F003","specification_paragraph":"[0009]","embodiment":"E1","figure":"图1","status":"strong"},
+  {"claim_id":"C2","feature_id":"F005","specification_paragraph":null,"embodiment":null,"figure":null,"status":"missing"}
+]

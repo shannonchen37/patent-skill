@@ -1,0 +1,4 @@
+interface:
+  display_name: "Patent Skill"
+  short_description: "Turn R&D evidence into reviewable patent assets"
+  default_prompt: "Use $patent-skill to analyze this R&D project and prepare traceable Chinese patent drafting assets."

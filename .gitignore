@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+/patent-workspace/
+*.docx
+.env
+*.pem
+*.key
+credentials.json
+secrets.*

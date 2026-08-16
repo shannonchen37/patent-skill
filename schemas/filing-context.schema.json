@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Filing Context","type":"object",
+  "properties":{"inventors":{"type":"array","items":{"type":"object"}},"applicant":{"type":["string","null"]},
+  "public_disclosures":{"type":"array","items":{"type":"object"}},"prior_applications":{"type":"array","items":{"type":"object"}},
+  "development_locations":{"type":"array","items":{"type":"string"}},"foreign_filing_planned":{"type":["boolean","null"]},
+  "confidentiality_review_status":{"enum":["complete","incomplete","review-required","unknown"]}},"additionalProperties":true}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workspace Status",
+  "type": "object",
+  "required": ["state"],
+  "properties": {
+    "state": {"enum": ["DISCOVERY", "INVENTOR_REVIEW", "CLAIM_SKELETON", "PRE_SEARCH", "SEARCHED", "CLAIM_STRATEGY", "CLAIMS_V1", "DRAFT", "CLAIMS_V2", "PRE_FILING_REVIEW", "READY_FOR_ATTORNEY_REVIEW"]},
+    "open_questions": {"type": "integer", "minimum": 0},
+    "human_confirmations": {"type": "object"}
+  },
+  "additionalProperties": true
+}

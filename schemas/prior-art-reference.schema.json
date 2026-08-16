@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Prior Art Reference",
+  "type": "object",
+  "required": ["reference_id", "title", "reference_type", "verification"],
+  "properties": {
+    "reference_id": {"type": "string"}, "publication_number": {"type": ["string", "null"]},
+    "application_number": {"type": ["string", "null"]}, "title": {"type": "string"},
+    "reference_type": {"enum": ["patent", "non-patent", "synthetic-test-fixture"]},
+    "jurisdiction": {"type": ["string", "null"]}, "filing_date": {"type": ["string", "null"]},
+    "earliest_priority_date": {"type": ["string", "null"]}, "publication_date": {"type": ["string", "null"]},
+    "source": {"type": ["string", "null"]}, "url": {"type": ["string", "null"]},
+    "verification": {
+      "type": "object", "required": ["bibliographic", "content", "family"],
+      "properties": {
+        "bibliographic": {"enum": ["verified", "partial", "unknown", "unverified", "synthetic"]},
+        "content": {"enum": ["verified", "partial", "unknown", "unverified", "synthetic"]},
+        "family": {"enum": ["verified", "partial", "unknown", "unverified", "synthetic"]}
+      }
+    },
+    "production_usable": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}
