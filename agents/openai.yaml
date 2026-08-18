@@ -1,4 +1,4 @@
 interface:
   display_name: "Patent Skill"
   short_description: "Turn R&D evidence into reviewable patent assets"
-  default_prompt: "Use $patent-skill only on the separate target R&D project I supply. Never analyze the Skill package itself; ask me for the target project if none is available."
+  default_prompt: "Use $patent-skill to guide me to upload my target project's code ZIP, confirm it is separate from the Skill package, and then begin discover automatically."

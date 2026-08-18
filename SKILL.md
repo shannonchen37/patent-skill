@@ -1,23 +1,45 @@
 ---
 name: patent-skill
-description: Analyze a user-supplied target R&D project's source code, engineering documents, tests, experiments, and inventor context to mine technical inventions, assess Chinese software and AI patent workflow risks, map engineering provenance, structure prior-art analysis, develop claim strategy, and prepare traceable Chinese invention-patent drafting assets. Use when turning a separately supplied R&D project into invention candidates, disclosures, claim sets, specifications, or pre-filing review materials.
+description: Guide the user to upload or select their target R&D project code, then analyze its source code, engineering documents, tests, experiments, and inventor context to mine technical inventions, assess Chinese software and AI patent workflow risks, map engineering provenance, structure prior-art analysis, develop claim strategy, and prepare traceable Chinese invention-patent drafting assets. Use when a user wants to start Chinese patent mining or drafting from an R&D project, including when they have not yet supplied the project files; begin by guiding project upload instead of analyzing the Skill package.
 ---
 
 # Patent Skill
 
 Turn R&D evidence into traceable, reviewable patent drafting assets. Never represent an output as legal advice or filing-ready.
 
-## Target input gate
+## Project intake and upload guidance
 
-Run this gate before every mode:
+Run this intake before every mode:
 
 1. Accept a target only when the user explicitly identifies a separate project attachment, repository, workspace, or path as the R&D project to analyze.
 2. Treat this Skill's own directory and all bundled files—including `SKILL.md`, `README.md`, `references/`, `scripts/`, `schemas/`, `assets/`, `tests/`, and package source—as tooling, never as the patent subject.
 3. Never infer a target project from files bundled inside the Skill package.
-4. If no separate target is available, or the target is ambiguous, stop before `discover` and ask the user to upload or select the real project. Produce no invention analysis.
-5. State the accepted target attachment, repository, workspace, or path before scanning it.
+4. If no separate target is available, do not merely report an error. Start the upload guidance below and wait for the user's project. Produce no invention analysis yet.
+5. If multiple possible targets exist, list their names and ask the user to choose one.
+6. State the accepted target attachment, repository, workspace, or path before scanning it.
+7. After a valid target arrives, continue with `discover` automatically unless the user requested another mode. Do not require the user to repeat the command.
 
-When the gate fails, reply: `未检测到独立的目标研发项目。请另行上传项目代码/文档 ZIP，或明确指定待分析的仓库、工作区或路径。patent-skill 自身文件不会被作为专利分析对象。`
+When no target project is available, reply in Chinese with this actionable guidance:
+
+```text
+好的，我会先从你的真实研发项目中挖掘可申请专利的技术方案。
+
+请在当前对话中上传“待分析项目的代码 ZIP”（不是 patent-skill 安装包）。建议 ZIP 中包含：
+- 项目源代码；
+- README、架构或设计文档；
+- 测试代码、实验记录或性能数据（如有）；
+- 能说明技术问题、技术手段和技术效果的其他材料（如有）。
+
+上传前请删除密钥、客户数据、账号凭据以及无权披露的内容。你只需上传文件；收到后我会确认项目名称和材料范围，并自动开始 discover，无需再次输入命令。
+```
+
+Adapt the first instruction to the environment:
+
+- In ChatGPT or another attachment-capable chat, explicitly ask the user to use the attachment/upload button and upload the target code ZIP in the current conversation.
+- In Codex with an open repository, ask the user to open the target repository as the current workspace or provide its exact path. If an attachment is supported, also offer ZIP upload.
+- Never claim that an upload button exists when the current interface clearly does not support attachments.
+
+When a target arrives, acknowledge it before analysis: `已收到目标项目：<attachment/repository/path>。我将仅分析该项目，不会分析 patent-skill 自身文件。现在开始 discover。`
 
 ## Non-negotiable rules
 
@@ -31,7 +53,7 @@ When the gate fails, reply: `未检测到独立的目标研发项目。请另行
 
 ## Workflow
 
-1. Pass the target input gate, then collect filing context, rights, disclosure, priority, development-location, and foreign-filing information.
+1. Complete project intake; if the target is missing, guide the user to upload it and wait. Once received, collect filing context, rights, disclosure, priority, development-location, and foreign-filing information.
 2. Scan the repository safely, extract symbols, and abstract implementation into technical mechanisms.
 3. Assess eligibility and excluded subject matter. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md).
 4. Mine candidates, build engineering provenance, perform preliminary search, rank candidates, and assess preliminary unity.

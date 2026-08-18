@@ -18,21 +18,21 @@
 1. 在 GitHub 选择 **Code → Download ZIP**。
 2. 在 ChatGPT 中进入 **插件 → 技能 → 创建 → 从计算机上传**。
 3. 上传 `patent-skill` ZIP 完成 Skill 安装。
-4. **另行上传一个独立的目标项目 ZIP**，其中包含已获授权使用的代码、设计文档、测试和实验材料。
+4. 启动 Skill。Skill 会主动引导你另行上传待分析项目的代码 ZIP。
 
-`patent-skill` ZIP 只是工具，不是待申请项目。仅上传 Skill、尚未上传目标项目时，不要执行 `discover`。
+`patent-skill` ZIP 只是工具，不是待申请项目。启动后，Skill 必须先要求用户上传真实项目代码；收到项目后才会自动执行 `discover`。
 
 如果看不到“技能”或“上传”入口，请检查套餐、工作空间权限或管理员设置。
 
-首次使用 Prompt：
+首次使用只需发送：
 
 ```text
-使用 $patent-skill 对我单独上传的目标项目《PROJECT.zip》执行 discover。
-《patent-skill》安装包及其中的 SKILL.md、references、scripts、schemas、assets、tests 和包源码只是工具，禁止作为待申请发明进行分析。
-如果无法确认或访问《PROJECT.zip》，立即停止并要求我重新上传，不得改为分析 Skill 自身文件。
-先检查申请背景、权属、公开情况和敏感信息，再分析技术问题、技术手段、技术效果及候选发明点。
-输出工程证据和必须由发明人回答的问题，不要直接撰写权利要求。
+使用 $patent-skill 开始专利挖掘。
 ```
+
+此时 Skill 应主动回复并引导你使用附件按钮上传“待分析项目的代码 ZIP”。建议项目 ZIP 包含源代码、README、架构/设计文档、测试及实验材料。你上传后，Skill 会确认项目名称和范围并自动进入 `discover`，无需再次输入 Prompt。
+
+如果 Skill 没有主动要求上传真实项目，或者开始分析 `patent-skill` 安装包，则属于错误行为。
 
 ## 在 Codex 中使用
 
@@ -50,7 +50,7 @@ git clone \
 git -C ~/.codex/skills/patent-skill pull
 ```
 
-在 Codex 中打开待分析的真实代码仓库，而不是打开 `~/.codex/skills/patent-skill`，然后发送：
+启动后，Skill 会引导你打开待分析的真实代码仓库或提供项目路径。也可以先在 Codex 中打开目标仓库，然后发送：
 
 ```text
 使用 $patent-skill 对当前仓库执行 discover。
@@ -59,6 +59,8 @@ git -C ~/.codex/skills/patent-skill pull
 先检查申请背景、权属、公开情况和敏感信息，再分析技术问题、技术手段、技术效果及候选发明点。
 输出工程证据和必须由发明人回答的问题，不要直接撰写权利要求。
 ```
+
+如果当前工作区没有真实项目，Skill 应先要求你打开项目仓库、提供准确路径，或在界面支持时上传项目代码 ZIP，而不是扫描 Skill 安装目录。
 
 Skill 可放在 `~/.codex/skills` 中跨仓库使用，并可通过 `$skill-name` 显式调用，参见 [OpenAI 官方 Codex Skill 指南](https://learn.chatgpt.com/use-cases/reusable-codex-skills)。
 
