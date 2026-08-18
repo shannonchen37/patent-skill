@@ -1,6 +1,6 @@
 ---
 name: patent-skill
-description: Guide the user to upload or select their target R&D project code, then analyze its source code, engineering documents, tests, experiments, and inventor context to mine technical inventions, assess Chinese software and AI patent workflow risks, map engineering provenance, structure prior-art analysis, develop claim strategy, and prepare traceable Chinese invention-patent drafting assets. Use when a user wants to start Chinese patent mining or drafting from an R&D project, including when they have not yet supplied the project files; begin by guiding project upload instead of analyzing the Skill package.
+description: Guide the user to upload or select target R&D project code, ask for an optional proposed patent title, then perform evidence extraction, invention mining, mandatory prior-art overlap analysis, claim strategy, and traceable Chinese invention-patent drafting. Use when a user wants to turn a real software, algorithm, AI, or engineering project into a Chinese patent draft, including when project files or a proposed title have not yet been supplied; never analyze the Skill package as the invention.
 ---
 
 # Patent Skill
@@ -17,7 +17,7 @@ Run this intake before every mode:
 4. If no separate target is available, do not merely report an error. Start the upload guidance below and wait for the user's project. Produce no invention analysis yet.
 5. If multiple possible targets exist, list their names and ask the user to choose one.
 6. State the accepted target attachment, repository, workspace, or path before scanning it.
-7. After a valid target arrives, continue with `discover` automatically unless the user requested another mode. Do not require the user to repeat the command.
+7. After a valid target arrives, ask the patent-title question below. Do not require the user to select an internal workflow mode.
 
 When no target project is available, reply in Chinese with this actionable guidance:
 
@@ -30,7 +30,7 @@ When no target project is available, reply in Chinese with this actionable guida
 - 测试代码、实验记录或性能数据（如有）；
 - 能说明技术问题、技术手段和技术效果的其他材料（如有）。
 
-上传前请删除密钥、客户数据、账号凭据以及无权披露的内容。你只需上传文件；收到后我会确认项目名称和材料范围，并自动开始 discover，无需再次输入命令。
+上传前请删除密钥、客户数据、账号凭据以及无权披露的内容。你只需上传文件；收到后我会确认项目名称和材料范围，并询问你是否已有拟申请的专利名称。
 ```
 
 Adapt the first instruction to the environment:
@@ -39,39 +39,64 @@ Adapt the first instruction to the environment:
 - In Codex with an open repository, ask the user to open the target repository as the current workspace or provide its exact path. If an attachment is supported, also offer ZIP upload.
 - Never claim that an upload button exists when the current interface clearly does not support attachments.
 
-When a target arrives, acknowledge it before analysis: `已收到目标项目：<attachment/repository/path>。我将仅分析该项目，不会分析 patent-skill 自身文件。现在开始 discover。`
+When a target arrives, acknowledge it before analysis: `已收到目标项目：<attachment/repository/path>。我将仅分析该项目，不会分析 patent-skill 自身文件。`
+
+## Patent-title intake
+
+Ask one content question before mining: `你是否已有拟申请的专利名称？有则直接提供；没有请回复“无”，我将根据代码挖掘核心发明并生成候选名称。`
+
+- If the user supplies a title, treat it as intent and a search seed, not as the final title or proof of novelty.
+- If the user supplies no title, derive the protected subject from code evidence, search it, and propose a title only after selecting the strongest feature combination.
+- Search the exact title, synonyms, broader/narrower expressions, technical problem, mechanism, feature combination, and relevant IPC/CPC classes.
+- Do not judge overlap from titles alone. Compare technical solutions and claim features.
+- If close prior art is found, do not merely rename the invention. Identify a genuine, code-supported distinguishing feature combination and search again.
+- If no defensible distinction exists, report high overlap risk instead of inventing a difference.
+- Confirm the final title after Claims V2. Use clear, concise technical terminology that reflects the protected subject and type.
 
 ## Non-negotiable rules
 
 - Never invent technical facts, metrics, prior art, patent numbers, inventors, ownership, or disclosure dates.
 - Do not move directly from source code to claims.
+- Do not block technical drafting on applicant, inventor, address, ownership, or filing-form data. Use `【待填写】` and collect them after the patent-content package exists.
 - Keep engineering provenance, specification support, prior-art disclosure, and priority basis separate.
 - Do not combine references to conclude lack of novelty.
+- Never promise zero collision. Record searched databases, dates, queries, reviewed documents, coverage limits, and the residual risk of unpublished or missed prior art.
 - Treat scores and legal-risk labels as preliminary review aids.
 - Keep internal paths, customer data, secrets, and irrelevant trade secrets out of public-facing drafts.
 - Never set `FILING_READY`. Stop at `READY_FOR_ATTORNEY_REVIEW`, and only when required artifacts and confirmations exist.
 
 ## Workflow
 
-1. Complete project intake; if the target is missing, guide the user to upload it and wait. Once received, collect filing context, rights, disclosure, priority, development-location, and foreign-filing information.
-2. Scan the repository safely, extract symbols, and abstract implementation into technical mechanisms.
-3. Assess eligibility and excluded subject matter. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md).
-4. Mine candidates, build engineering provenance, perform preliminary search, rank candidates, and assess preliminary unity.
-5. Ask inventors to resolve missing facts, then create an invention brief and preliminary claim skeleton (`CS01`, not `C1`).
-6. Document search queries and sources. Read [prior-art-search.md](references/prior-art-search.md), [novelty-analysis-cn.md](references/novelty-analysis-cn.md), and [inventive-step-cn.md](references/inventive-step-cn.md).
-7. Analyze feature combinations, create claim strategy and Claims V1, then recheck actual claims and unity.
-8. Draft the specification and embodiments, then create Claims V2.
-9. Recheck Claims V2 against search, eligibility, and unity; validate specification support, priority basis, amendment basis, fallbacks, abstract, and drawings.
-10. Reconfirm inventorship/ownership, redact internal evidence, and produce the pre-filing review report.
+1. Complete project and title intake. Applicant and inventor information is not a content gate.
+2. Scan source code, documents, configuration, tests, and history; build a `code evidence -> processing step -> data/state change -> technical effect` map.
+3. Abstract complete technical mechanisms and candidate feature combinations. Exclude generic UI, library use, and isolated known components unless they functionally cooperate in the claimed solution.
+4. Perform mandatory prior-art searching before choosing the main invention. Read [prior-art-search.md](references/prior-art-search.md), [novelty-analysis-cn.md](references/novelty-analysis-cn.md), and [inventive-step-cn.md](references/inventive-step-cn.md).
+5. Compare each candidate against the closest references, identify genuine distinguishing features and technical effects, rank candidates, and split unrelated inventive concepts for unity.
+6. Select the strongest defensible combination and create Claims V1 with an independent method claim, layered dependent fallbacks, and appropriate device, storage-medium, and computer-program-product categories.
+7. Draft the specification around Claims V1: technical field, background, problem, solution, effects, drawings, embodiments, alternatives, parameters, failure paths, and implementation details. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md), [claim-drafting-cn.md](references/claim-drafting-cn.md), and [specification-cn.md](references/specification-cn.md).
+8. Create Claims V2 from the completed specification and verify every limitation against code evidence and specification support.
+9. Re-search Claims V2 and review novelty, inventive step, eligibility, clarity, support, enablement, unity, fallbacks, abstract, drawings, amendment basis, and disclosure redaction.
+10. Produce the complete content package first. Put applicant, inventor, ownership, address, disclosure, priority, and foreign-filing items in a separate `【待填写】` checklist for later filing review.
 
-## Modes
+## User experience and internal stages
 
-- `discover`: context through inventor questions.
-- `analyze P001`: invention brief, skeleton, documented search, feature-combination analysis.
-- `draft P001`: require an analyzed search snapshot; produce Claims V1/V2 and support matrices.
-- `draft P001 --pre-search`: label every output `PRE-SEARCH DRAFT`; never advance to review-ready.
-- `review P001`: run final CN, search, support, priority, eligibility, unity, inventorship, and redaction checks.
-- `full`: attempt all stages but stop at unresolved human or evidence gates.
+Run evidence extraction, mining, search, Claims V1, specification, Claims V2, and review as internal stages. Do not require the user to operate `discover`, `analyze`, `draft`, candidate IDs, or state labels. Ask only for a proposed title and for technical facts that are genuinely absent and material to the content; continue with clearly marked assumptions or `【待补充】` fields when safe.
+
+## Required output package
+
+Create a `patent-output/` package containing:
+
+- `01-技术证据地图.md`
+- `02-现有技术检索报告.md`
+- `03-区别特征矩阵.md`
+- `04-权利要求书.md`
+- `05-说明书.md`
+- `06-说明书摘要.md`
+- `07-附图说明.md`
+- `08-专利性与支持性复核.md`
+- `09-待补充信息.md`
+
+Never call the package filing-ready. Missing applicant or inventor data does not prevent generation of files 01 through 08.
 
 ## Reference routing
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "Patent Skill"
   short_description: "Turn R&D evidence into reviewable patent assets"
-  default_prompt: "Use $patent-skill to guide me to upload my target project's code ZIP, confirm it is separate from the Skill package, and then begin discover automatically."
+  default_prompt: "Use $patent-skill to collect my target code and optional patent title, search for technical overlap, and generate a complete Chinese patent-content package."
