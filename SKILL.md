@@ -1,11 +1,23 @@
 ---
 name: patent-skill
-description: Analyze source code, engineering documents, tests, experiments, and inventor context to mine technical inventions, assess Chinese software and AI patent workflow risks, map engineering provenance, structure prior-art analysis, develop claim strategy, and prepare traceable Chinese invention-patent drafting assets. Use when turning an R&D project into invention candidates, disclosures, claim sets, specifications, or pre-filing review materials.
+description: Analyze a user-supplied target R&D project's source code, engineering documents, tests, experiments, and inventor context to mine technical inventions, assess Chinese software and AI patent workflow risks, map engineering provenance, structure prior-art analysis, develop claim strategy, and prepare traceable Chinese invention-patent drafting assets. Use when turning a separately supplied R&D project into invention candidates, disclosures, claim sets, specifications, or pre-filing review materials.
 ---
 
 # Patent Skill
 
 Turn R&D evidence into traceable, reviewable patent drafting assets. Never represent an output as legal advice or filing-ready.
+
+## Target input gate
+
+Run this gate before every mode:
+
+1. Accept a target only when the user explicitly identifies a separate project attachment, repository, workspace, or path as the R&D project to analyze.
+2. Treat this Skill's own directory and all bundled files—including `SKILL.md`, `README.md`, `references/`, `scripts/`, `schemas/`, `assets/`, `tests/`, and package source—as tooling, never as the patent subject.
+3. Never infer a target project from files bundled inside the Skill package.
+4. If no separate target is available, or the target is ambiguous, stop before `discover` and ask the user to upload or select the real project. Produce no invention analysis.
+5. State the accepted target attachment, repository, workspace, or path before scanning it.
+
+When the gate fails, reply: `未检测到独立的目标研发项目。请另行上传项目代码/文档 ZIP，或明确指定待分析的仓库、工作区或路径。patent-skill 自身文件不会被作为专利分析对象。`
 
 ## Non-negotiable rules
 
@@ -19,7 +31,7 @@ Turn R&D evidence into traceable, reviewable patent drafting assets. Never repre
 
 ## Workflow
 
-1. Collect filing context, rights, disclosure, priority, development-location, and foreign-filing information.
+1. Pass the target input gate, then collect filing context, rights, disclosure, priority, development-location, and foreign-filing information.
 2. Scan the repository safely, extract symbols, and abstract implementation into technical mechanisms.
 3. Assess eligibility and excluded subject matter. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md).
 4. Mine candidates, build engineering provenance, perform preliminary search, rank candidates, and assess preliminary unity.

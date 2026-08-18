@@ -17,15 +17,19 @@
 
 1. 在 GitHub 选择 **Code → Download ZIP**。
 2. 在 ChatGPT 中进入 **插件 → 技能 → 创建 → 从计算机上传**。
-3. 上传 ZIP，确认其中包含 `SKILL.md`、`references/`、`scripts/`、`schemas/` 和 `assets/`。
-4. 再上传已获授权使用的代码、设计文档、测试和实验材料。
+3. 上传 `patent-skill` ZIP 完成 Skill 安装。
+4. **另行上传一个独立的目标项目 ZIP**，其中包含已获授权使用的代码、设计文档、测试和实验材料。
+
+`patent-skill` ZIP 只是工具，不是待申请项目。仅上传 Skill、尚未上传目标项目时，不要执行 `discover`。
 
 如果看不到“技能”或“上传”入口，请检查套餐、工作空间权限或管理员设置。
 
 首次使用 Prompt：
 
 ```text
-使用 $patent-skill 对本对话上传的研发材料执行 discover。
+使用 $patent-skill 对我单独上传的目标项目《PROJECT.zip》执行 discover。
+《patent-skill》安装包及其中的 SKILL.md、references、scripts、schemas、assets、tests 和包源码只是工具，禁止作为待申请发明进行分析。
+如果无法确认或访问《PROJECT.zip》，立即停止并要求我重新上传，不得改为分析 Skill 自身文件。
 先检查申请背景、权属、公开情况和敏感信息，再分析技术问题、技术手段、技术效果及候选发明点。
 输出工程证据和必须由发明人回答的问题，不要直接撰写权利要求。
 ```
@@ -46,10 +50,12 @@ git clone \
 git -C ~/.codex/skills/patent-skill pull
 ```
 
-在 Codex 中打开待分析的真实代码仓库，然后发送：
+在 Codex 中打开待分析的真实代码仓库，而不是打开 `~/.codex/skills/patent-skill`，然后发送：
 
 ```text
 使用 $patent-skill 对当前仓库执行 discover。
+当前仓库是用户明确指定的目标研发项目；~/.codex/skills/patent-skill 及其文件只是工具，禁止作为待申请发明进行分析。
+如果当前工作区不是独立的目标研发项目，立即停止并要求我选择正确仓库。
 先检查申请背景、权属、公开情况和敏感信息，再分析技术问题、技术手段、技术效果及候选发明点。
 输出工程证据和必须由发明人回答的问题，不要直接撰写权利要求。
 ```
@@ -108,8 +114,8 @@ patent-skill validate ./patent-workspace
 ## 安全与边界
 
 - 不要上传未经授权的公司机密、客户数据、密钥或受限制代码。
+- 只有用户独立指定或上传的目标项目可以作为专利分析对象；Skill 自身文件永远不是目标项目。
 - 工程证据、说明书支持、现有技术披露和优先权基础必须分别记录。
-- 示例中的 D1 是合成测试夹具，不是真实专利文献。
 - 本项目不自动连接 CNIPA、Google Patents 或 Espacenet，也不提交专利申请。
 - 专利性、发明人、权属、优先权和申请策略必须由专业人员最终判断。
 
@@ -117,6 +123,5 @@ patent-skill validate ./patent-workspace
 
 - [Skill 主入口](SKILL.md)
 - [完整工作流](docs/workflow.md)
-- [合成示例](examples/adaptive-compute-scheduler)
 - [安全政策](SECURITY.md)
 - [MIT License](LICENSE)
