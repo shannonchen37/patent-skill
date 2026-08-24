@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import zipfile
@@ -6,13 +7,16 @@ from pathlib import Path
 import pytest
 
 from patent_skill.case_workspace import (
+    CASE_STAGE_ORDER,
     REQUIRED_DOCX_SUBJECTS,
     _validate_claims_stage,
     _validate_docx_file,
     _validate_final_search,
     _validate_support_map,
     advance_stage,
+    export_case_package,
     init_case_workspace,
+    revise_case_stage,
     validate_case_workspace,
 )
 
@@ -73,6 +77,47 @@ def _write_valid_docx(path: Path, body: str = "有效专利文档正文") -> Non
         archive.writestr("[Content_Types].xml", content_types)
         archive.writestr("word/document.xml", document)
         archive.writestr("docProps/validation-padding.bin", bytes(range(256)) * 8)
+
+
+def _complete_application(case: Path) -> None:
+    application = case / "12-application"
+    claims_v2 = (case / "08-claims-v2.md").read_text(encoding="utf-8")
+    claims_final = (application / "claims-final.md").read_text(encoding="utf-8")
+    specification = "# 最终说明书\n\n本实施例执行步骤A，实现降低时延的技术效果。\n"
+    abstract = "# 说明书摘要\n\n本发明公开一种执行步骤A以降低处理时延的方法。\n"
+    drawings = "# 附图说明\n\n图1为本发明方法的流程图。\n"
+    _write(application / "specification-final.md", specification)
+    _write(application / "abstract.md", abstract)
+    _write(application / "drawings-description.md", drawings)
+
+    def digest(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    _write(
+        application / "application-metadata.json",
+        json.dumps(
+            {
+                "source_claims_v2_sha256": digest(claims_v2),
+                "claims_final_sha256": digest(claims_final),
+                "specification_final_sha256": digest(specification),
+                "abstract_sha256": digest(abstract),
+                "drawings_description_sha256": digest(drawings),
+                "limitation_sync": [
+                    {
+                        "limitation_id": "I1-L1",
+                        "specification_sections": ["实施例"],
+                        "terminology_synced": True,
+                        "protected_subject_synced": True,
+                        "embodiment_supported": True,
+                        "technical_effect_supported": True,
+                        "drawing_reference_status": "checked",
+                        "status": "synced",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 def test_init_case_creates_only_snapshot_and_uses_clean_git_commit(tmp_path: Path) -> None:
@@ -252,8 +297,13 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     advance_stage(case, "FINAL_SEARCH")
     _write(case / "10-final-search" / "search-records.jsonl", _search_record())
     with pytest.raises(ValueError, match="Final search"):
-        advance_stage(case, "FINAL_AUDIT")
+        advance_stage(case, "APPLICATION_DRAFT")
     _write(case / "10-final-search" / "search-records.jsonl", _final_search_record())
+    advance_stage(case, "APPLICATION_DRAFT")
+    assert "[I1-L1]" not in (case / "12-application" / "claims-final.md").read_text()
+    with pytest.raises(ValueError, match="pending application-draft"):
+        advance_stage(case, "FINAL_AUDIT")
+    _complete_application(case)
     advance_stage(case, "FINAL_AUDIT")
     sections = (
         "新颖性",
@@ -266,7 +316,7 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
         "敏感信息",
     )
     _write(
-        case / "11-final-audit.md",
+        case / "13-final-audit.md",
         "# 最终审计\n\n"
         + "\n\n".join(f"## {section}\n\n已完成检查。" for section in sections)
         + "\n",
@@ -278,6 +328,10 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     status = json.loads((case / "case-status.json").read_text(encoding="utf-8"))
     assert status["filing_context_questions_open"] is True
     assert not (case / "filing-package").exists()
+
+    exported = export_case_package(case, tmp_path / "patent-output")
+    assert (exported / "claims-final.md").exists()
+    assert (exported / "export-manifest.json").exists()
 
     advance_stage(case, "INDEPENDENT_AUDIT")
     _write(
@@ -423,3 +477,40 @@ def test_final_search_requires_claim_combinations_and_distinguishing_coverage(
     errors = _validate_final_search(tmp_path, {})
     assert any("full combination query" in error for error in errors)
     assert any("distinguishing limitations: I1-L2" in error for error in errors)
+
+
+def test_revision_archives_downstream_and_reopens_target(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    case = tmp_path / "case"
+    init_case_workspace(case, project)
+    status_path = case / "case-status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    stages = [stage.value for stage in CASE_STAGE_ORDER]
+    current_index = stages.index("FINAL_SEARCH")
+    status["current_stage"] = "FINAL_SEARCH"
+    status["stage_history"] = [
+        {
+            "stage": stage,
+            "entered_at": "2026-08-24T00:00:00+00:00",
+            "event": "initialize" if index == 0 else "advance",
+            "revision": 0,
+        }
+        for index, stage in enumerate(stages[: current_index + 1])
+    ]
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    _write(case / "08-claims-v2.md", "old claims")
+    _write(case / "08-claims-v2-structure.json", "{}")
+    (case / "10-final-search").mkdir()
+    _write(case / "10-final-search" / "search-records.jsonl", "old search")
+
+    revised = revise_case_stage(case, "CLAIMS_V2", "D4 overlaps I1-L2")
+
+    assert revised["current_stage"] == "CLAIMS_V2"
+    assert revised["revision"] == 1
+    revision = case / "revisions" / "R001"
+    assert (revision / "artifacts" / "08-claims-v2.md").read_text() == "old claims"
+    assert (revision / "artifacts" / "10-final-search" / "search-records.jsonl").exists()
+    assert (revision / "reason.json").exists()
+    assert (case / "08-claims-v2.md").exists()
+    assert not (case / "10-final-search").exists()

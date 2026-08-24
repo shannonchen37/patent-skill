@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import zipfile
 from collections.abc import Callable
@@ -12,7 +13,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from xml.etree import ElementTree
 
-from .claims import independent_claim_numbers, parse_claim_blocks, validate_claims_cn
+from .claims import (
+    independent_claim_numbers,
+    parse_claim_blocks,
+    validate_abstract_cn,
+    validate_claims_cn,
+)
 from .scanner import scan_repository
 
 
@@ -29,6 +35,7 @@ class CaseStage(StrEnum):
     CLAIMS_V2 = "CLAIMS_V2"
     CLAIM_SUPPORT_MAP = "CLAIM_SUPPORT_MAP"
     FINAL_SEARCH = "FINAL_SEARCH"
+    APPLICATION_DRAFT = "APPLICATION_DRAFT"
     FINAL_AUDIT = "FINAL_AUDIT"
     CONTENT_READY_FOR_ATTORNEY_REVIEW = "CONTENT_READY_FOR_ATTORNEY_REVIEW"
     INDEPENDENT_AUDIT = "INDEPENDENT_AUDIT"
@@ -63,6 +70,26 @@ REQUIRED_DOCX_SUBJECTS = (
     "请求书信息确认",
     "提交文件清单",
 )
+
+STAGE_ARTIFACTS: dict[CaseStage, tuple[str, ...]] = {
+    CaseStage.EVIDENCE_MAP: ("01-code-evidence-map.json", "01-code-evidence-map.md"),
+    CaseStage.INVENTION_CANDIDATES: (
+        "02-invention-candidates.json",
+        "02-invention-candidates.md",
+    ),
+    CaseStage.FIRST_SEARCH: ("03-prior-art-search",),
+    CaseStage.CANDIDATE_RANKING: ("02-candidate-ranking.json",),
+    CaseStage.FEATURE_MATRIX: ("04-feature-matrix.json", "04-feature-matrix.md"),
+    CaseStage.CLAIMS_V1: ("05-claims-v1.md",),
+    CaseStage.SPECIFICATION_V1: ("06-specification-v1.md",),
+    CaseStage.SUPPORT_CANDIDATES: ("07-support-candidates.md",),
+    CaseStage.CLAIMS_V2: ("08-claims-v2.md", "08-claims-v2-structure.json"),
+    CaseStage.CLAIM_SUPPORT_MAP: ("09-claim-support-map.md",),
+    CaseStage.FINAL_SEARCH: ("10-final-search",),
+    CaseStage.APPLICATION_DRAFT: ("12-application",),
+    CaseStage.FINAL_AUDIT: ("13-final-audit.json", "13-final-audit.md"),
+    CaseStage.INDEPENDENT_AUDIT: ("filing-package",),
+}
 
 CONTEXT_LEDGER = """# 上下文确认记录
 
@@ -166,7 +193,7 @@ ARTIFACT_TEMPLATES = {
 """,
     ),
     CaseStage.FINAL_AUDIT: (
-        "11-final-audit.md",
+        "13-final-audit.md",
         """# 最终审计
 
 ## 新颖性
@@ -229,7 +256,16 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
         "current_stage": CaseStage.PROJECT_SNAPSHOT.value,
         "technical_questions_open": True,
         "filing_context_questions_open": True,
-        "stage_history": [{"stage": CaseStage.PROJECT_SNAPSHOT.value, "entered_at": now}],
+        "revision": 0,
+        "revision_history": [],
+        "stage_history": [
+            {
+                "stage": CaseStage.PROJECT_SNAPSHOT.value,
+                "entered_at": now,
+                "event": "initialize",
+                "revision": 0,
+            }
+        ],
         "external_roles": {
             "yjmm10/patent-skills": "CNIPA_SEARCH_ONLY",
             "HuangXinzhe/cn-patent-drafting": "INDEPENDENT_AUDIT_AND_DOCX_ONLY",
@@ -290,11 +326,125 @@ def advance_stage(
 
     status["current_stage"] = target.value
     status.setdefault("stage_history", []).append(
-        {"stage": target.value, "entered_at": datetime.now(UTC).isoformat()}
+        {
+            "stage": target.value,
+            "entered_at": datetime.now(UTC).isoformat(),
+            "event": "advance",
+            "revision": status.get("revision", 0),
+        }
     )
     _prepare_stage_artifact(case_dir, target)
     _write_json(case_dir / "case-status.json", status)
     return status
+
+
+def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[str, Any]:
+    case_dir = case_dir.resolve()
+    status = _load_status(case_dir)
+    history_errors = _validate_history(status)
+    if history_errors:
+        raise ValueError("Case state is not revisable: " + "; ".join(history_errors))
+    if not reason.strip():
+        raise ValueError("A substantive revision reason is required")
+    try:
+        current = CaseStage(status["current_stage"])
+        target = CaseStage(target_stage)
+    except ValueError as exc:
+        raise ValueError(f"Unknown case stage: {target_stage}") from exc
+    if target == CaseStage.PROJECT_SNAPSHOT:
+        raise ValueError("Project snapshot cannot be reopened; initialize a new case instead")
+    if CASE_STAGE_ORDER.index(target) >= CASE_STAGE_ORDER.index(current):
+        raise ValueError("Revision target must be earlier than the current stage")
+
+    revision = int(status.get("revision", 0)) + 1
+    revision_id = f"R{revision:03d}"
+    revision_dir = case_dir / "revisions" / revision_id
+    if revision_dir.exists():
+        raise ValueError(f"Revision archive already exists: {revision_id}")
+    artifact_archive = revision_dir / "artifacts"
+    artifact_archive.mkdir(parents=True)
+    for stage in CASE_STAGE_ORDER[CASE_STAGE_ORDER.index(target) :]:
+        for relative in STAGE_ARTIFACTS.get(stage, ()):
+            source = case_dir / relative
+            if not source.exists():
+                continue
+            destination = artifact_archive / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(destination))
+
+    created_at = datetime.now(UTC).isoformat()
+    revision_record = {
+        "revision_id": revision_id,
+        "reopened_stage": target.value,
+        "reason": reason.strip(),
+        "trigger": current.value,
+        "created_at": created_at,
+        "archived_under": str(revision_dir.relative_to(case_dir)),
+    }
+    _write_json(revision_dir / "reason.json", revision_record)
+    status["revision"] = revision
+    status.setdefault("revision_history", []).append(revision_record)
+    status["current_stage"] = target.value
+    status.setdefault("stage_history", []).append(
+        {
+            "stage": target.value,
+            "entered_at": created_at,
+            "event": "revise",
+            "revision": revision,
+            "reason": reason.strip(),
+            "trigger": current.value,
+        }
+    )
+    _prepare_stage_artifact(case_dir, target)
+    _write_json(case_dir / "case-status.json", status)
+    return status
+
+
+def export_case_package(case_dir: Path, output_dir: Path) -> Path:
+    case_dir = case_dir.resolve()
+    output_dir = output_dir.resolve()
+    status = _load_status(case_dir)
+    current = CaseStage(status["current_stage"])
+    if CASE_STAGE_ORDER.index(current) < CASE_STAGE_ORDER.index(
+        CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW
+    ):
+        raise ValueError("Case content is not ready for export")
+    errors = validate_case_workspace(case_dir)
+    if errors:
+        raise ValueError("Case export gate failed: " + "; ".join(errors))
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise ValueError(f"Export directory is not empty: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for relative in (
+        "12-application/claims-final.md",
+        "12-application/specification-final.md",
+        "12-application/abstract.md",
+        "12-application/drawings-description.md",
+        "12-application/application-metadata.json",
+        "09-claim-support-map.md",
+        "13-final-audit.md",
+    ):
+        source = case_dir / relative
+        destination = output_dir / Path(relative).name
+        shutil.copy2(source, destination)
+    _write_json(
+        output_dir / "export-manifest.json",
+        {
+            "canonical_source": "patent-skill",
+            "source_case": str(case_dir),
+            "source_revision": status.get("revision", 0),
+            "exported_at": datetime.now(UTC).isoformat(),
+            "files": [
+                {
+                    "path": path.name,
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+                for path in sorted(output_dir.iterdir())
+                if path.is_file() and path.name != "export-manifest.json"
+            ],
+        },
+    )
+    return output_dir
 
 
 def validate_case_workspace(case_dir: Path) -> list[str]:
@@ -352,6 +502,7 @@ def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) ->
         ),
         CaseStage.CLAIM_SUPPORT_MAP: _validate_support_map,
         CaseStage.FINAL_SEARCH: _validate_final_search,
+        CaseStage.APPLICATION_DRAFT: _validate_application_draft,
         CaseStage.FINAL_AUDIT: _validate_final_audit,
         CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW: _validate_content_ready,
         CaseStage.INDEPENDENT_AUDIT: _validate_independent_audit,
@@ -365,6 +516,8 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
         _prepare_search_dir(case_dir / "03-prior-art-search")
     elif stage == CaseStage.FINAL_SEARCH:
         _prepare_search_dir(case_dir / "10-final-search")
+    elif stage == CaseStage.APPLICATION_DRAFT:
+        _prepare_application_draft(case_dir)
     elif stage == CaseStage.INDEPENDENT_AUDIT:
         directory = case_dir / "filing-package" / "huang-audit"
         directory.mkdir(parents=True, exist_ok=True)
@@ -396,6 +549,42 @@ def _prepare_search_dir(path: Path) -> None:
         "reviewed_reference_ids、verified_urls、coverage_limitations。"
         "第二次检索还必须记录 claim_id、limitation_ids 和 search_scope。\n",
         encoding="utf-8",
+    )
+
+
+def _prepare_application_draft(case_dir: Path) -> None:
+    application = case_dir / "12-application"
+    application.mkdir(parents=True, exist_ok=True)
+    claims_v2 = case_dir / "08-claims-v2.md"
+    claims_text = claims_v2.read_text(encoding="utf-8") if claims_v2.exists() else ""
+    claims_final = TRACE_LABEL_RE.sub("", claims_text)
+    (application / "claims-final.md").write_text(claims_final, encoding="utf-8")
+    specification_v1 = case_dir / "06-specification-v1.md"
+    specification_seed = (
+        specification_v1.read_text(encoding="utf-8") if specification_v1.exists() else ""
+    )
+    (application / "specification-final.md").write_text(
+        "# 最终说明书\n\n> 【待同步 Claims V2 后完成】\n\n" + specification_seed,
+        encoding="utf-8",
+    )
+    (application / "abstract.md").write_text(
+        "# 说明书摘要\n\n【待根据最终权利要求和最终说明书撰写】\n",
+        encoding="utf-8",
+    )
+    (application / "drawings-description.md").write_text(
+        "# 附图说明\n\n【待根据最终说明书确认附图及标记】\n",
+        encoding="utf-8",
+    )
+    _write_json(
+        application / "application-metadata.json",
+        {
+            "source_claims_v2_sha256": _sha256_text(claims_text),
+            "claims_final_sha256": _sha256_text(claims_final),
+            "specification_final_sha256": "",
+            "abstract_sha256": "",
+            "drawings_description_sha256": "",
+            "limitation_sync": [],
+        },
     )
 
 
@@ -759,10 +948,111 @@ def _validate_final_search(case_dir: Path, _: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    application = case_dir / "12-application"
+    claims_path = application / "claims-final.md"
+    specification_path = application / "specification-final.md"
+    abstract_path = application / "abstract.md"
+    drawings_path = application / "drawings-description.md"
+    metadata_path = application / "application-metadata.json"
+    errors: list[str] = []
+    for path in (
+        claims_path,
+        specification_path,
+        abstract_path,
+        drawings_path,
+        metadata_path,
+    ):
+        if not path.exists():
+            errors.append(f"Missing application draft artifact: {path.name}")
+    if errors:
+        return errors
+
+    claims_v2 = (case_dir / "08-claims-v2.md").read_text(encoding="utf-8")
+    claims_final = claims_path.read_text(encoding="utf-8")
+    expected_claims = TRACE_LABEL_RE.sub("", claims_v2)
+    if claims_final != expected_claims:
+        errors.append(
+            "claims-final.md must be generated exactly from Claims V2 without trace labels"
+        )
+    if TRACE_LABEL_RE.search(claims_final):
+        errors.append("claims-final.md still contains internal trace labels")
+    errors.extend(validate_claims_cn(claims_final))
+
+    specification = specification_path.read_text(encoding="utf-8")
+    abstract = abstract_path.read_text(encoding="utf-8")
+    drawings = drawings_path.read_text(encoding="utf-8")
+    for name, content in (
+        ("specification-final.md", specification),
+        ("abstract.md", abstract),
+        ("drawings-description.md", drawings),
+    ):
+        if "【待" in content or "待同步" in content:
+            errors.append(f"{name} still contains pending application-draft content")
+    errors.extend(validate_abstract_cn(abstract))
+    if not _meaningful_markdown(drawings):
+        errors.append("drawings-description.md has no substantive content")
+    if not _meaningful_markdown(specification):
+        errors.append("specification-final.md has no substantive content")
+
+    try:
+        metadata = _load_json(metadata_path, "application metadata")
+        structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+    except ValueError as exc:
+        return errors + [str(exc)]
+    expected_hashes = {
+        "source_claims_v2_sha256": _sha256_text(claims_v2),
+        "claims_final_sha256": _sha256_text(claims_final),
+        "specification_final_sha256": _sha256_text(specification),
+        "abstract_sha256": _sha256_text(abstract),
+        "drawings_description_sha256": _sha256_text(drawings),
+    }
+    for field, expected in expected_hashes.items():
+        if metadata.get(field) != expected:
+            errors.append(f"Application metadata hash is stale or missing: {field}")
+
+    expected_ids = {
+        limitation_id
+        for entry in structure.get("independent_claims", [])
+        if isinstance(entry, dict)
+        for limitation_id in entry.get("limitation_ids", [])
+    }
+    sync_entries = metadata.get("limitation_sync")
+    if not isinstance(sync_entries, list):
+        errors.append("Application metadata limitation_sync must be a list")
+        return errors
+    seen: set[str] = set()
+    required_truths = (
+        "terminology_synced",
+        "protected_subject_synced",
+        "embodiment_supported",
+        "technical_effect_supported",
+    )
+    for index, entry in enumerate(sync_entries, 1):
+        if not isinstance(entry, dict):
+            errors.append(f"Application limitation sync entry {index} must be an object")
+            continue
+        limitation_id = entry.get("limitation_id")
+        if limitation_id in seen:
+            errors.append(f"Application limitation sync duplicates {limitation_id}")
+        seen.add(limitation_id)
+        if not entry.get("specification_sections"):
+            errors.append(f"Application limitation {limitation_id} lacks specification sections")
+        if any(entry.get(field) is not True for field in required_truths):
+            errors.append(f"Application limitation {limitation_id} is not fully synchronized")
+        if entry.get("drawing_reference_status") not in {"checked", "not_applicable"}:
+            errors.append(f"Application limitation {limitation_id} lacks drawing review")
+        if entry.get("status") != "synced":
+            errors.append(f"Application limitation {limitation_id} status must be synced")
+    if seen != expected_ids:
+        errors.append("Application limitation_sync must cover exactly all Claims V2 limitations")
+    return errors
+
+
 def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
-    path = case_dir / "11-final-audit.md"
+    path = case_dir / "13-final-audit.md"
     if not path.exists():
-        return ["Missing case artifact: 11-final-audit.md"]
+        return ["Missing case artifact: 13-final-audit.md"]
     text = path.read_text(encoding="utf-8")
     required = (
         "新颖性",
@@ -944,6 +1234,18 @@ def _manifest_digest(files: list[dict[str, Any]]) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _meaningful_markdown(text: str) -> list[str]:
+    return [
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", ">"))
+    ]
+
+
 def _markdown_data_rows(path: Path) -> list[list[str]]:
     if not path.exists():
         return []
@@ -967,15 +1269,45 @@ def _validate_history(status: dict[str, Any]) -> list[str]:
         current = CaseStage(status.get("current_stage", ""))
     except ValueError:
         return [f"Unknown current_stage: {status.get('current_stage')}"]
-    history = [
-        entry.get("stage") for entry in status.get("stage_history", []) if isinstance(entry, dict)
-    ]
-    expected = [stage.value for stage in CASE_STAGE_ORDER[: CASE_STAGE_ORDER.index(current) + 1]]
-    return (
-        []
-        if history == expected
-        else ["stage_history must be the exact ordered prefix ending at current_stage"]
-    )
+    history = status.get("stage_history", [])
+    if not isinstance(history, list) or not history:
+        return ["stage_history must contain an initialization event"]
+    errors: list[str] = []
+    previous: CaseStage | None = None
+    revision = 0
+    for index, entry in enumerate(history):
+        if not isinstance(entry, dict):
+            errors.append(f"stage_history event {index + 1} must be an object")
+            continue
+        try:
+            stage = CaseStage(entry.get("stage", ""))
+        except ValueError:
+            errors.append(f"stage_history event {index + 1} has an unknown stage")
+            continue
+        event = entry.get("event") or ("initialize" if index == 0 else "advance")
+        if index == 0:
+            if event != "initialize" or stage != CaseStage.PROJECT_SNAPSHOT:
+                errors.append("stage_history must begin with PROJECT_SNAPSHOT initialization")
+        elif previous is not None and event == "advance":
+            expected_index = CASE_STAGE_ORDER.index(previous) + 1
+            if expected_index >= len(CASE_STAGE_ORDER) or CASE_STAGE_ORDER[expected_index] != stage:
+                errors.append(f"stage_history event {index + 1} is not a sequential advance")
+        elif previous is not None and event == "revise":
+            if CASE_STAGE_ORDER.index(stage) >= CASE_STAGE_ORDER.index(previous):
+                errors.append(f"stage_history event {index + 1} is not a backward revision")
+            revision += 1
+            if entry.get("revision") != revision or not str(entry.get("reason", "")).strip():
+                errors.append(f"stage_history revision event {index + 1} is incomplete")
+        elif index > 0:
+            errors.append(f"stage_history event {index + 1} has an invalid event type")
+        previous = stage
+    if previous != current:
+        errors.append("stage_history must end at current_stage")
+    if status.get("revision", 0) != revision:
+        errors.append("case revision counter does not match stage_history")
+    if len(status.get("revision_history", [])) != revision:
+        errors.append("revision_history count does not match revision counter")
+    return errors
 
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:

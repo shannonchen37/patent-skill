@@ -3,7 +3,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .case_workspace import advance_stage, init_case_workspace, validate_case_workspace
+from .case_workspace import (
+    advance_stage,
+    export_case_package,
+    init_case_workspace,
+    revise_case_stage,
+    validate_case_workspace,
+)
 from .claims import validate_abstract_cn, validate_claims_cn
 from .render import render_docx
 from .scanner import write_manifest
@@ -27,6 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
     advance.add_argument("target_stage")
     advance.add_argument("--confirmation", default="")
     advance.add_argument("--close-technical-questions", action="store_true")
+    revise = commands.add_parser("revise-stage")
+    revise.add_argument("case_dir", type=Path)
+    revise.add_argument("target_stage")
+    revise.add_argument("--reason", required=True)
+    export = commands.add_parser("export-case")
+    export.add_argument("case_dir", type=Path)
+    export.add_argument("--output", type=Path, required=True)
     scan = commands.add_parser("scan")
     scan.add_argument("project", type=Path)
     scan.add_argument("--output", type=Path, default=Path("patent-workspace"))
@@ -74,6 +87,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {exc}")
             return 1
         print(f"PASS advanced to {status['current_stage']}")
+        return 0
+    if args.command == "revise-stage":
+        try:
+            status = revise_case_stage(args.case_dir, args.target_stage, args.reason)
+        except ValueError as exc:
+            print(f"FAIL {exc}")
+            return 1
+        print(f"PASS reopened {status['current_stage']} as revision {status['revision']}")
+        return 0
+    if args.command == "export-case":
+        try:
+            output = export_case_package(args.case_dir, args.output)
+        except ValueError as exc:
+            print(f"FAIL {exc}")
+            return 1
+        print(output)
         return 0
     if args.command == "validate-case":
         errors = validate_case_workspace(args.case_dir)

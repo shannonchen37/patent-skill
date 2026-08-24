@@ -9,6 +9,8 @@
     "current_stage",
     "technical_questions_open",
     "filing_context_questions_open",
+    "revision",
+    "revision_history",
     "stage_history",
     "external_roles"
   ],
@@ -31,6 +33,7 @@
         "CLAIMS_V2",
         "CLAIM_SUPPORT_MAP",
         "FINAL_SEARCH",
+        "APPLICATION_DRAFT",
         "FINAL_AUDIT",
         "CONTENT_READY_FOR_ATTORNEY_REVIEW",
         "INDEPENDENT_AUDIT",
@@ -39,6 +42,8 @@
     },
     "technical_questions_open": {"type": "boolean"},
     "filing_context_questions_open": {"type": "boolean"},
+    "revision": {"type": "integer", "minimum": 0},
+    "revision_history": {"type": "array"},
     "stage_history": {
       "type": "array",
       "minItems": 1,
