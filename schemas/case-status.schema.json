@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Patent Case Status",
+  "type": "object",
+  "required": [
+    "canonical_source",
+    "case_dir",
+    "project_root",
+    "current_stage",
+    "current_gate",
+    "material_questions_open",
+    "external_roles"
+  ],
+  "properties": {
+    "canonical_source": {"const": "patent-skill"},
+    "case_dir": {"type": "string", "minLength": 1},
+    "project_root": {"type": "string", "minLength": 1},
+    "proposed_title": {"type": "string"},
+    "current_stage": {
+      "enum": [
+        "PROJECT_SNAPSHOT",
+        "EVIDENCE_MAP",
+        "INVENTION_CANDIDATES",
+        "FIRST_SEARCH",
+        "FEATURE_MATRIX",
+        "CLAIMS_V1",
+        "SPECIFICATION_V1",
+        "CLAIM_SUPPORT_MAP",
+        "CLAIMS_V2",
+        "FINAL_SEARCH",
+        "FINAL_AUDIT",
+        "READY_FOR_ATTORNEY_REVIEW"
+      ]
+    },
+    "current_gate": {"type": "string", "minLength": 1},
+    "material_questions_open": {"type": "boolean"},
+    "external_roles": {
+      "type": "object",
+      "required": ["yjmm10/patent-skills", "HuangXinzhe/cn-patent-drafting"],
+      "properties": {
+        "yjmm10/patent-skills": {"const": "CNIPA_SEARCH_ONLY"},
+        "HuangXinzhe/cn-patent-drafting": {"const": "FINAL_AUDIT_AND_DOCX_ONLY"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

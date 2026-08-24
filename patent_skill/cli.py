@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .case_workspace import init_case_workspace, validate_case_workspace
 from .claims import validate_abstract_cn, validate_claims_cn
 from .render import render_docx
 from .scanner import write_manifest
@@ -16,6 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="patent-skill")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init-context")
+    init_case = commands.add_parser("init-case")
+    init_case.add_argument("case_dir", type=Path)
+    init_case.add_argument("--project", type=Path, required=True)
+    init_case.add_argument("--title", default="")
+    validate_case = commands.add_parser("validate-case")
+    validate_case.add_argument("case_dir", type=Path)
     scan = commands.add_parser("scan")
     scan.add_argument("project", type=Path)
     scan.add_argument("--output", type=Path, default=Path("patent-workspace"))
@@ -36,6 +43,26 @@ def main(argv: list[str] | None = None) -> int:
         template = Path(__file__).resolve().parent.parent / "assets" / "PATENT_CONTEXT.template.md"
         Path("PATENT_CONTEXT.md").write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
         print("Created PATENT_CONTEXT.md")
+        return 0
+    if args.command == "init-case":
+        result = init_case_workspace(args.case_dir, args.project, args.title)
+        snapshot = result["snapshot"]
+        git = snapshot["git"]
+        print(f"Created patent case: {result['status']['case_dir']}")
+        print(f"Evidence files: {snapshot['file_count']}")
+        if git.get("is_repository"):
+            print(f"Git HEAD: {git['head']}")
+            print(f"Worktree clean: {git['worktree_clean']}")
+        for warning in snapshot["security_warnings"]:
+            print(f"SECURITY WARNING: excluded {warning}")
+        return 0
+    if args.command == "validate-case":
+        errors = validate_case_workspace(args.case_dir)
+        if errors:
+            for error in errors:
+                print(f"FAIL {error}")
+            return 1
+        print("PASS canonical case validation")
         return 0
     if args.command == "scan":
         engineering = args.output / "engineering"

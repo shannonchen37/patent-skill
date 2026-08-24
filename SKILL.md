@@ -1,11 +1,32 @@
 ---
 name: patent-skill
-description: Guide the user to upload or select target R&D project code, ask for an optional proposed patent title, then perform evidence extraction, invention mining, mandatory prior-art overlap analysis, claim strategy, and traceable Chinese invention-patent drafting. Use when a user wants to turn a real software, algorithm, AI, or engineering project into a Chinese patent draft, including when project files or a proposed title have not yet been supplied; never analyze the Skill package as the invention.
+description: Progressively guide the user from real R&D project code to a Chinese invention-patent draft by identifying material uncertainties, asking focused context questions, confirming code evidence and invention scope, performing mandatory prior-art overlap analysis, and drafting traceable patent assets only after confirmation gates. Use when a user wants to mine or draft a Chinese patent from a software, algorithm, AI, or engineering project, including when the project, title, or technical context is incomplete; never analyze the Skill package as the invention.
 ---
 
 # Patent Skill
 
-Turn R&D evidence into traceable, reviewable patent drafting assets. Never represent an output as legal advice or filing-ready.
+Turn R&D evidence into traceable, reviewable patent drafting assets through progressive user confirmation. Never represent an output as legal advice or filing-ready.
+
+## Progressive interaction contract
+
+Do not run the workflow end to end in one uninterrupted pass. Code is evidence, not a complete invention disclosure. After each material analysis stage, expose the important uncertainty and wait for the user to confirm or add context before advancing.
+
+Maintain a context ledger with four states:
+
+- `CONFIRMED_BY_USER`: explicitly confirmed by the user;
+- `SUPPORTED_BY_CODE`: directly supported by identified project evidence;
+- `INFERRED_NEEDS_CONFIRMATION`: plausible but capable of changing the protected scope;
+- `CONTRADICTED_OR_MISSING`: contradicted by the supplied title/materials or absent from the evidence.
+
+Ask one focused question by default and never more than three questions in one turn. For each question, briefly state:
+
+1. what the evidence currently shows;
+2. what is uncertain or contradictory;
+3. why the answer affects the patent content.
+
+Do not ask the user to understand internal stages, candidate IDs, legal jargon, or state names. Translate each uncertainty into a concrete technical question with examples where useful.
+
+Pause instead of assuming when an answer could materially change the technical problem, necessary technical features, feature interaction, technical effect, invention title, claim scope, novelty position, enablement, disclosure history, or choice among multiple inventions. Only non-material details may remain `【待补充】` while work continues.
 
 ## Project intake and upload guidance
 
@@ -53,6 +74,20 @@ Ask one content question before mining: `你是否已有拟申请的专利名称
 - If no defensible distinction exists, report high overlap risk instead of inventing a difference.
 - Confirm the final title after Claims V2. Use clear, concise technical terminology that reflects the protected subject and type.
 
+## Canonical case workspace
+
+Make Shannon `patent-skill` the orchestrator and only canonical source of case facts. Create or resume one user-visible `patent-case/` directory before substantive analysis. For a new case, prefer:
+
+```bash
+python -m patent_skill.cli init-case patent-case --project <project-path> --title "<optional-title>"
+```
+
+Read [case-workspace.md](references/case-workspace.md) before creating or advancing a case. Do not scatter authoritative artifacts across chat attachments, temporary directories, or external Skill output folders.
+
+Freeze the evidence basis before invention drafting. Record the exact Git commit/tag, branch, remote, dirty-worktree state, included file hashes, excluded sensitive paths, disclosure history, and technical contributors under `00-project-snapshot/`. Do not create a commit or tag without user authorization. If the worktree is dirty or no immutable reference exists, pause at the snapshot gate and ask the user how to freeze it.
+
+External tools are reviewers or search adapters, never co-authors of the canonical case. Read [toolchain-integration.md](references/toolchain-integration.md) before using yjmm10 or Huang.
+
 ## Non-negotiable rules
 
 - Never invent technical facts, metrics, prior art, patent numbers, inventors, ownership, or disclosure dates.
@@ -67,36 +102,67 @@ Ask one content question before mining: `你是否已有拟申请的专利名称
 
 ## Workflow
 
-1. Complete project and title intake. Applicant and inventor information is not a content gate.
-2. Scan source code, documents, configuration, tests, and history; build a `code evidence -> processing step -> data/state change -> technical effect` map.
-3. Abstract complete technical mechanisms and candidate feature combinations. Exclude generic UI, library use, and isolated known components unless they functionally cooperate in the claimed solution.
-4. Perform mandatory prior-art searching before choosing the main invention. Read [prior-art-search.md](references/prior-art-search.md), [novelty-analysis-cn.md](references/novelty-analysis-cn.md), and [inventive-step-cn.md](references/inventive-step-cn.md).
-5. Compare each candidate against the closest references, identify genuine distinguishing features and technical effects, rank candidates, and split unrelated inventive concepts for unity.
-6. Select the strongest defensible combination and create Claims V1 with an independent method claim, layered dependent fallbacks, and appropriate device, storage-medium, and computer-program-product categories.
-7. Draft the specification around Claims V1: technical field, background, problem, solution, effects, drawings, embodiments, alternatives, parameters, failure paths, and implementation details. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md), [claim-drafting-cn.md](references/claim-drafting-cn.md), and [specification-cn.md](references/specification-cn.md).
-8. Create Claims V2 from the completed specification and verify every limitation against code evidence and specification support.
-9. Re-search Claims V2 and review novelty, inventive step, eligibility, clarity, support, enablement, unity, fallbacks, abstract, drawings, amendment basis, and disclosure redaction.
-10. Produce the complete content package first. Put applicant, inventor, ownership, address, disclosure, priority, and foreign-filing items in a separate `【待填写】` checklist for later filing review.
+1. Complete project/title intake and initialize the canonical case.
+2. **Snapshot gate:** inspect code, docs, configuration, tests, benchmarks, issues/decisions, and necessary Git history. Record hashes and Git state without drafting. Detect and exclude secrets, customer data, production addresses, unrelated trade secrets, third-party source, dependencies, and build artifacts. Ask for project dates, disclosure history, and core contributors. Wait until the evidence basis is confirmed.
+3. Build `01-code-evidence-map.md` as `code evidence -> processing step -> data/state change -> technical effect`. Reconstruct end-to-end runtime chains, not class/API inventories. Exclude ordinary UI, simple library calls, and known components without technical cooperation.
+4. **Evidence gate:** report proven, inferred, missing, and contradicted facts. Ask the highest-impact technical question and wait. Write no claims.
+5. Mine 3–5 candidates into `02-invention-candidates.md`. For each record technical problem, mechanism, distinguishing feature combination, effect, evidence, design-around exposure, support strength, and main weakness.
+6. **Direction gate:** show the candidates in plain language and ask the user which direction reflects the actual invention. Check unity and propose separate applications where candidates lack one common special technical feature. Wait.
+7. Run the first prior-art search before claims. Search the confirmed candidate's problem, mechanism, feature combination, synonyms, broad/narrow expressions, and IPC/CPC. Shannon owns the query plan and conclusions; use yjmm10 `search`/CNIPA only as an optional search adapter, with WebSearch/Google Patents fallback. Store all logs under `03-prior-art-search/`.
+8. Compare 3–10 closest references and create `04-feature-matrix.md`. Do not mosaic references for novelty. For inventive step, identify the closest reference, differences, actual problem, effect, and technical teaching.
+9. **Overlap gate:** show the closest overlap and proposed code-supported distinction. Ask the user to confirm any implementation/effect on which the distinction depends. If no defensible distinction remains, mark `HIGH_OVERLAP_RISK` and return to another candidate or stop.
+10. Draft `05-claims-v1.md`: method independent claim first, layered dependent fallbacks, then supported system/device/medium/program-product categories. Every limitation must trace to the evidence map.
+11. **Claim-scope gate:** show the independent-claim feature chain in plain language and wait for approval.
+12. Draft `06-specification-v1.md` around Claims V1, including alternatives, parameter ranges, data structures, module interaction, failure paths, deployment variants, and AI model input/output/training details where necessary. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md), [claim-drafting-cn.md](references/claim-drafting-cn.md), and [specification-cn.md](references/specification-cn.md).
+13. Build `07-claim-support-map.md` as `claim limitation -> source/design evidence -> specification paragraph -> technical effect`. Draft `08-claims-v2.md` only after every material limitation has support or is narrowed/removed.
+14. Run the second feature-level search against Claims V2 under `09-final-search/`, again using Shannon analysis plus optional yjmm10 CNIPA results. Recheck novelty, inventive step, conflicting applications, eligibility, support, enablement, unity, fallbacks, and amendment basis.
+15. Write Shannon's canonical `10-final-audit.md`. Only after Claims V2 and the specification are stable, hand read-only copies to Huang `cn-patent-drafting` for independent support/terminology/formula/drawing audit and separate DOCX output. Huang must not select a new invention, rewrite canonical facts, or silently change claims.
+16. Reconcile every Huang finding in Shannon. Accepted changes must update the evidence map, support map, canonical draft, and audit trail before DOCX regeneration. Stop at `READY_FOR_ATTORNEY_REVIEW`; a Chinese patent attorney performs the filing review.
 
 ## User experience and internal stages
 
-Run evidence extraction, mining, search, Claims V1, specification, Claims V2, and review as internal stages. Do not require the user to operate `discover`, `analyze`, `draft`, candidate IDs, or state labels. Ask only for a proposed title and for technical facts that are genuinely absent and material to the content; continue with clearly marked assumptions or `【待补充】` fields when safe.
+Run evidence extraction, mining, search, Claims V1, specification, Claims V2, and review as internal stages. Do not require the user to operate `discover`, `analyze`, `draft`, candidate IDs, or state labels.
 
-## Required output package
+At every user-facing pause, state four things concisely:
 
-Create a `patent-output/` package containing:
+1. current stage;
+2. confirmed findings;
+3. the single most important unresolved point;
+4. what will happen after the user answers.
 
-- `01-技术证据地图.md`
-- `02-现有技术检索报告.md`
-- `03-区别特征矩阵.md`
-- `04-权利要求书.md`
-- `05-说明书.md`
-- `06-说明书摘要.md`
-- `07-附图说明.md`
-- `08-专利性与支持性复核.md`
-- `09-待补充信息.md`
+Never silently convert an uncertainty into a claim limitation. Never treat user silence as confirmation. If the user explicitly requests a complete draft in one turn, still stop at any material uncertainty gate; speed does not authorize fabrication. If no material uncertainty exists at a gate, state that briefly and advance without asking a ceremonial question.
 
-Never call the package filing-ready. Missing applicant or inventor data does not prevent generation of files 01 through 08.
+After delivering a draft package, guide the user through technical confirmation, disclosure-history verification, evidence supplementation, drawing preparation, and professional review. Ask the next highest-priority question in the same response.
+
+## Canonical case structure
+
+Create and maintain:
+
+```text
+patent-case/
+├── case-status.json
+├── context-ledger.md
+├── 00-project-snapshot/
+├── 01-code-evidence-map.md
+├── 02-invention-candidates.md
+├── 03-prior-art-search/
+│   ├── shannon/
+│   └── yjmm10/
+├── 04-feature-matrix.md
+├── 05-claims-v1.md
+├── 06-specification-v1.md
+├── 07-claim-support-map.md
+├── 08-claims-v2.md
+├── 09-final-search/
+│   ├── shannon/
+│   └── yjmm10/
+├── 10-final-audit.md
+└── filing-package/
+    ├── huang-audit/
+    └── docx/
+```
+
+Keep `case-status.json`, the context ledger, and canonical numbered artifacts under Shannon control. Never call the package filing-ready. Missing applicant/address/form data may remain placeholders, but unresolved technical, disclosure, or support facts must respect the stage gates.
 
 ## Reference routing
 
@@ -106,5 +172,7 @@ Never call the package filing-ready. Missing applicant or inventor data does not
 - Unity and priority: [portfolio-unity-cn.md](references/portfolio-unity-cn.md), [priority-basis-cn.md](references/priority-basis-cn.md)
 - Claims, specification, abstract, and amendments: [claim-drafting-cn.md](references/claim-drafting-cn.md), [specification-cn.md](references/specification-cn.md), [abstract-cn.md](references/abstract-cn.md), [amendment-basis-cn.md](references/amendment-basis-cn.md)
 - Final review: [review-rules.md](references/review-rules.md), [disclosure-redaction.md](references/disclosure-redaction.md)
+- Canonical workspace and evidence freeze: [case-workspace.md](references/case-workspace.md)
+- yjmm10/Huang handoffs: [toolchain-integration.md](references/toolchain-integration.md)
 
 Use scripts for deterministic checks. Run `python -m patent_skill.cli --help` for the CLI.

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "patent-skill"
 version = "0.0.0"
-description = "Turn R&D evidence into traceable, reviewable patent drafting assets."
+description = "Orchestrate evidence-traceable Chinese invention patent cases from R&D projects."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

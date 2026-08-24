@@ -1,26 +1,37 @@
 # patent-skill
 
-从真实研发代码、设计文档、测试和实验记录中提炼技术方案，检索相近专利，并生成供发明人与中国专利专业人员复核的完整发明专利内容包。
+从真实研发代码、设计文档、测试和实验记录中提炼技术方案，主动找出证据缺口和矛盾，通过分阶段提问补齐上下文，再生成供发明人与中国专利专业人员复核的中国发明专利案件包。
+
+`patent-skill` 是主流程和唯一案件事实源：
+
+- [yjmm10/patent-skills](https://github.com/yjmm10/patent-skills) 仅用于增强 CNIPA 查新；
+- [HuangXinzhe/cn-patent-drafting](https://github.com/HuangXinzhe/cn-patent-drafting) 仅用于最终独立审稿和分件 DOCX 输出；
+- 三套工具不会并行撰写，也不会互相覆盖案件事实。
 
 [GitHub 仓库](https://github.com/shannonchen37/patent-skill)
 
 ## 正确流程
 
-用户只负责提供目标代码并回答是否已有拟用专利名称。其余阶段由 Skill 自动完成：
+Skill 不会收到代码后立即端到端生成专利。代码不能代替完整的技术交底；凡是会影响发明点、区别特征或权利要求范围的不确定内容，都需要用户确认。
 
 ```text
 上传或指定真实代码
 → 询问拟用专利名称（没有则回复“无”）
-→ 提取代码证据和完整技术机制
-→ 挖掘候选特征组合
-→ 检索名称、语义、技术特征及 IPC/CPC
-→ 选择具有真实区别特征的主发明
-→ 权利要求 V1
-→ 说明书和附图
-→ 权利要求 V2
-→ 再检索与支持性复核
-→ 输出完整专利内容包
+→ 冻结 Git commit/tag 和专利证据版本
+→ 提取代码证据，指出“已证明/推断/缺失/矛盾”
+→ 询问最关键的技术缺口并等待回答
+→ 挖掘 3–5 个候选发明，由用户确认主方向/拆案
+→ 第一次查新（Shannon 主分析，yjmm10 可选增强 CNIPA）
+→ 展示最接近现有技术和拟采用的区别特征，由用户确认
+→ Claims V1 → 用户确认独立权利要求技术链
+→ 说明书 V1 → claim-support-map → Claims V2
+→ 第二次特征级查新和模拟审查
+→ Huang 独立审稿 → Shannon 逐项协调
+→ Huang 生成成套 DOCX
+→ 中国专利代理师终审
 ```
+
+每轮默认只问一个、最多三个问题，并解释该问题为什么会影响专利内容。不会要求用户操作内部阶段或理解候选编号。
 
 申请人、发明人、地址、权属等信息不是内容生成门槛，缺少时统一保留 `【待填写】`。
 
@@ -46,7 +57,7 @@ Skill 会主动要求上传待分析项目的代码 ZIP。`patent-skill` 安装�
 你是否已有拟申请的专利名称？有则直接提供；没有请回复“无”，我将根据代码挖掘核心发明并生成候选名称。
 ```
 
-用户回答后，Skill 自动完成后续内容工作，不要求用户操作 `discover`、`analyze`、`draft` 或候选编号。
+用户回答后，Skill 先扫描证据并提出第一轮关键问题。后续按“证据确认→方向确认→现有技术差异确认→权利要求范围确认”逐步推进，不要求用户操作 `discover`、`analyze`、`draft` 或候选编号。
 
 ## 在 Codex 中使用
 
@@ -73,17 +84,32 @@ git -C ~/.codex/skills/patent-skill pull
 ## 输出
 
 ```text
-patent-output/
-├── 01-技术证据地图.md
-├── 02-现有技术检索报告.md
-├── 03-区别特征矩阵.md
-├── 04-权利要求书.md
-├── 05-说明书.md
-├── 06-说明书摘要.md
-├── 07-附图说明.md
-├── 08-专利性与支持性复核.md
-└── 09-待补充信息.md
+patent-case/
+├── case-status.json
+├── context-ledger.md
+├── 00-project-snapshot/
+├── 01-code-evidence-map.md
+├── 02-invention-candidates.md
+├── 03-prior-art-search/{shannon,yjmm10}/
+├── 04-feature-matrix.md
+├── 05-claims-v1.md
+├── 06-specification-v1.md
+├── 07-claim-support-map.md
+├── 08-claims-v2.md
+├── 09-final-search/{shannon,yjmm10}/
+├── 10-final-audit.md
+└── filing-package/{huang-audit,docx}/
 ```
+
+初始化案件目录：
+
+```bash
+python -m patent_skill.cli init-case patent-case \
+  --project /absolute/path/to/project \
+  --title "可选的拟申请名称"
+```
+
+初始化只记录证据快照、文件 SHA-256、Git 状态和安全警告，不复制源代码，也不会自动创建 commit/tag。
 
 输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
 
@@ -92,6 +118,7 @@ patent-output/
 - 不要上传未经授权的公司机密、客户数据、密钥或受限制代码。
 - 只分析用户明确指定的真实项目。
 - 不以改名、替换术语或更换权利要求类别规避现有技术。
+- 外部 Skill 不得覆盖 Shannon 的 evidence map、候选发明、Claims 或案件状态。
 - 本项目不提交专利申请，也不自动作出授权保证。
 
 ## 相关文件

@@ -9,6 +9,7 @@ BLOCKED_PATTERNS = ("*.pem", "*.key", "secrets.*", "*token*", "*password*")
 IGNORED_DIRS = {
     ".git", ".idea", ".vscode", ".venv", "venv", "node_modules", "vendor",
     "dist", "build", "target", "__pycache__", "coverage", ".cache", "patent-workspace",
+    "patent-case",
 }
 
 
