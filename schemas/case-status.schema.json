@@ -5,16 +5,17 @@
   "required": [
     "canonical_source",
     "case_dir",
-    "project_root",
+    "project_source",
     "current_stage",
-    "current_gate",
-    "material_questions_open",
+    "technical_questions_open",
+    "filing_context_questions_open",
+    "stage_history",
     "external_roles"
   ],
   "properties": {
     "canonical_source": {"const": "patent-skill"},
     "case_dir": {"type": "string", "minLength": 1},
-    "project_root": {"type": "string", "minLength": 1},
+    "project_source": {"type": "string", "minLength": 1},
     "proposed_title": {"type": "string"},
     "current_stage": {
       "enum": [
@@ -22,24 +23,40 @@
         "EVIDENCE_MAP",
         "INVENTION_CANDIDATES",
         "FIRST_SEARCH",
+        "CANDIDATE_RANKING",
         "FEATURE_MATRIX",
         "CLAIMS_V1",
         "SPECIFICATION_V1",
-        "CLAIM_SUPPORT_MAP",
+        "SUPPORT_CANDIDATES",
         "CLAIMS_V2",
+        "CLAIM_SUPPORT_MAP",
         "FINAL_SEARCH",
         "FINAL_AUDIT",
-        "READY_FOR_ATTORNEY_REVIEW"
+        "CONTENT_READY_FOR_ATTORNEY_REVIEW",
+        "INDEPENDENT_AUDIT",
+        "DOCX_PACKAGE_RENDERED"
       ]
     },
-    "current_gate": {"type": "string", "minLength": 1},
-    "material_questions_open": {"type": "boolean"},
+    "technical_questions_open": {"type": "boolean"},
+    "filing_context_questions_open": {"type": "boolean"},
+    "stage_history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["stage", "entered_at"],
+        "properties": {
+          "stage": {"type": "string"},
+          "entered_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
     "external_roles": {
       "type": "object",
       "required": ["yjmm10/patent-skills", "HuangXinzhe/cn-patent-drafting"],
       "properties": {
         "yjmm10/patent-skills": {"const": "CNIPA_SEARCH_ONLY"},
-        "HuangXinzhe/cn-patent-drafting": {"const": "FINAL_AUDIT_AND_DOCX_ONLY"}
+        "HuangXinzhe/cn-patent-drafting": {"const": "INDEPENDENT_AUDIT_AND_DOCX_ONLY"}
       },
       "additionalProperties": false
     }

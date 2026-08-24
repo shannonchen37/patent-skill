@@ -6,4 +6,4 @@ Follow the content-first artifact order in `SKILL.md`: code-evidence map, comple
 
 Treat drafting as iterative. Search before selecting the main invention and again after Claims V2. A title change alone never resolves technical overlap. Stop only when the target is missing or a material technical fact cannot be safely marked `【待补充】`; never fabricate a distinction, effect, metric, or prior-art conclusion.
 
-`READY_FOR_ATTORNEY_REVIEW` means the review package is organized; it does not mean rights, patentability, or filing compliance have been decided.
+`CONTENT_READY_FOR_ATTORNEY_REVIEW` means the technical content is organized. Independent audit and DOCX rendering follow as distinct states; none decides rights, patentability, or filing compliance.

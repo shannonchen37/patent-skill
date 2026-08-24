@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .case_workspace import init_case_workspace, validate_case_workspace
+from .case_workspace import advance_stage, init_case_workspace, validate_case_workspace
 from .claims import validate_abstract_cn, validate_claims_cn
 from .render import render_docx
 from .scanner import write_manifest
@@ -23,6 +23,11 @@ def build_parser() -> argparse.ArgumentParser:
     init_case.add_argument("--title", default="")
     validate_case = commands.add_parser("validate-case")
     validate_case.add_argument("case_dir", type=Path)
+    advance = commands.add_parser("advance-stage")
+    advance.add_argument("case_dir", type=Path)
+    advance.add_argument("target_stage")
+    advance.add_argument("--confirmation", default="")
+    advance.add_argument("--close-technical-questions", action="store_true")
     scan = commands.add_parser("scan")
     scan.add_argument("project", type=Path)
     scan.add_argument("--output", type=Path, default=Path("patent-workspace"))
@@ -47,14 +52,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init-case":
         result = init_case_workspace(args.case_dir, args.project, args.title)
         snapshot = result["snapshot"]
-        git = snapshot["git"]
         print(f"Created patent case: {result['status']['case_dir']}")
+        print(f"Snapshot type: {snapshot['snapshot_type']}")
+        print(f"Snapshot SHA-256: {snapshot['snapshot_sha256']}")
         print(f"Evidence files: {snapshot['file_count']}")
+        git = snapshot.get("git", {})
         if git.get("is_repository"):
             print(f"Git HEAD: {git['head']}")
             print(f"Worktree clean: {git['worktree_clean']}")
         for warning in snapshot["security_warnings"]:
             print(f"SECURITY WARNING: excluded {warning}")
+        return 0
+    if args.command == "advance-stage":
+        try:
+            status = advance_stage(
+                args.case_dir,
+                args.target_stage,
+                confirmation=args.confirmation,
+                close_technical_questions=args.close_technical_questions,
+            )
+        except ValueError as exc:
+            print(f"FAIL {exc}")
+            return 1
+        print(f"PASS advanced to {status['current_stage']}")
         return 0
     if args.command == "validate-case":
         errors = validate_case_workspace(args.case_dir)

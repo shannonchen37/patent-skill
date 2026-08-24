@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Patent Evidence Snapshot Manifest",
+  "type": "object",
+  "required": ["snapshot_type", "captured_at", "project_source", "snapshot_sha256", "manifest_sha256", "file_count", "files"],
+  "properties": {
+    "snapshot_type": {"enum": ["git_commit", "uploaded_archive", "directory_manifest"]},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "project_source": {"type": "string", "minLength": 1},
+    "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "git": {"type": "object"},
+    "file_count": {"type": "integer", "minimum": 0},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"snapshot_type": {"const": "git_commit"}}},
+      "then": {"required": ["git"]}
+    },
+    {
+      "if": {"properties": {"snapshot_type": {"const": "uploaded_archive"}}},
+      "then": {"required": ["archive_sha256"]}
+    }
+  ]
+}

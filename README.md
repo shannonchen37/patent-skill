@@ -17,17 +17,18 @@ Skill 不会收到代码后立即端到端生成专利。代码不能代替完�
 ```text
 上传或指定真实代码
 → 询问拟用专利名称（没有则回复“无”）
-→ 冻结 Git commit/tag 和专利证据版本
+→ 冻结证据版本（Git commit、上传 ZIP 或确定性目录清单）
 → 提取代码证据，指出“已证明/推断/缺失/矛盾”
 → 询问最关键的技术缺口并等待回答
-→ 挖掘 3–5 个候选发明，由用户确认主方向/拆案
-→ 第一次查新（Shannon 主分析，yjmm10 可选增强 CNIPA）
+→ 挖掘 3–5 个候选发明
+→ 对候选发明做第一次查新（Shannon 主分析，yjmm10 可选增强 CNIPA）
+→ 检索后排序；明显最优则继续，存在战略歧义时由用户确认主方向/拆案
 → 展示最接近现有技术和拟采用的区别特征，由用户确认
 → Claims V1 → 用户确认独立权利要求技术链
-→ 说明书 V1 → claim-support-map → Claims V2
+→ 说明书 V1 → support-candidates → Claims V2 → claim-support-map
 → 第二次特征级查新和模拟审查
-→ Huang 独立审稿 → Shannon 逐项协调
-→ Huang 生成成套 DOCX
+→ 内容达到 CONTENT_READY_FOR_ATTORNEY_REVIEW
+→ Huang 独立审稿 → Shannon 逐项协调 → 成套 DOCX
 → 中国专利代理师终审
 ```
 
@@ -57,7 +58,7 @@ Skill 会主动要求上传待分析项目的代码 ZIP。`patent-skill` 安装�
 你是否已有拟申请的专利名称？有则直接提供；没有请回复“无”，我将根据代码挖掘核心发明并生成候选名称。
 ```
 
-用户回答后，Skill 先扫描证据并提出第一轮关键问题。后续按“证据确认→方向确认→现有技术差异确认→权利要求范围确认”逐步推进，不要求用户操作 `discover`、`analyze`、`draft` 或候选编号。
+用户回答后，Skill 先扫描证据并提出第一轮关键问题。后续按“证据确认→候选检索与排序→必要时方向确认→现有技术差异确认→权利要求范围确认”逐步推进，不要求用户操作 `discover`、`analyze`、`draft` 或候选编号。
 
 ## 在 Codex 中使用
 
@@ -90,14 +91,16 @@ patent-case/
 ├── 00-project-snapshot/
 ├── 01-code-evidence-map.md
 ├── 02-invention-candidates.md
+├── 02-candidate-ranking.json
 ├── 03-prior-art-search/{shannon,yjmm10}/
 ├── 04-feature-matrix.md
 ├── 05-claims-v1.md
 ├── 06-specification-v1.md
-├── 07-claim-support-map.md
+├── 07-support-candidates.md
 ├── 08-claims-v2.md
-├── 09-final-search/{shannon,yjmm10}/
-├── 10-final-audit.md
+├── 09-claim-support-map.md
+├── 10-final-search/{shannon,yjmm10}/
+├── 11-final-audit.md
 └── filing-package/{huang-audit,docx}/
 ```
 
@@ -109,7 +112,14 @@ python -m patent_skill.cli init-case patent-case \
   --title "可选的拟申请名称"
 ```
 
-初始化只记录证据快照、文件 SHA-256、Git 状态和安全警告，不复制源代码，也不会自动创建 commit/tag。
+`--project` 可指向 Git/普通目录或 ZIP。初始化只记录快照类型、整体摘要、逐文件 SHA-256、可用的 Git 状态和安全警告，不复制源代码，也不会自动创建 commit/tag。后续阶段只能依次推进：
+
+```bash
+python -m patent_skill.cli advance-stage patent-case EVIDENCE_MAP
+python -m patent_skill.cli validate-case patent-case
+```
+
+阶段推进会验证当前产物，不允许手工跳过查新、支持性映射或审计。技术内容问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们已直接影响当前的新颖性或权属判断。
 
 输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
 

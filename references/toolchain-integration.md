@@ -12,7 +12,7 @@ Do not run the three tools as parallel generators.
 
 Repository: `https://github.com/yjmm10/patent-skills`
 
-Use only after Shannon has produced a query plan for a user-confirmed candidate. If installed, read its current `SKILL.md` and `prompts/search.md`, then use its `search` mode or `tools/cnipa_epub_search.py`. Generate 2–8 high-signal terms and run one semantic term per CNIPA query. Preserve:
+Use after Shannon has produced query plans for viable candidates. Candidate selection follows the first search: auto-select an obvious winner, but require human confirmation when rankings are close or multiple filings are strategically reasonable. If installed, read its current `SKILL.md` and `prompts/search.md`, then use its `search` mode or `tools/cnipa_epub_search.py`. Generate 2–8 high-signal terms and run one semantic term per CNIPA query. Preserve:
 
 - exact term;
 - execution date and database;
@@ -20,7 +20,7 @@ Use only after Shannon has produced a query plan for a user-confirmed candidate.
 - public number, title, abstract and URL;
 - tool failure, timeout, dependency, WAF and zero-result notes.
 
-Write first-search material only under `03-prior-art-search/yjmm10/` and Claims-V2 material only under `09-final-search/yjmm10/`. Shannon must independently verify documents, deduplicate results, inspect claims/descriptions, and write the canonical comparison. If yjmm10 or Playwright is unavailable, fall back to current public web/Google Patents search and record the coverage limitation.
+Write first-search material only under `03-prior-art-search/yjmm10/` and Claims-V2 material only under `10-final-search/yjmm10/`. Also write the required canonical fields to the enclosing `search-records.jsonl`. Shannon must independently verify documents, deduplicate results, inspect claims/descriptions, and write the canonical comparison. If yjmm10 or Playwright is unavailable, fall back to current public web/Google Patents search and record the coverage limitation.
 
 Never copy an external search conclusion into the feature matrix without Shannon verification.
 
@@ -28,7 +28,7 @@ Never copy an external search conclusion into the feature matrix without Shannon
 
 Repository: `https://github.com/HuangXinzhe/cn-patent-drafting`
 
-Invoke only after `08-claims-v2.md`, `06-specification-v1.md`, `07-claim-support-map.md`, `09-final-search/`, and Shannon's draft audit are stable. Provide read-only copies of:
+Invoke only after `08-claims-v2.md`, `06-specification-v1.md`, `09-claim-support-map.md`, `10-final-search/`, and `11-final-audit.md` are stable and Shannon has reached `CONTENT_READY_FOR_ATTORNEY_REVIEW`. Provide read-only copies of:
 
 - evidence map;
 - confirmed candidate and feature matrix;
