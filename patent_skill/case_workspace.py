@@ -5,10 +5,11 @@ import json
 import re
 import subprocess
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from .scanner import scan_repository
 
@@ -129,7 +130,9 @@ ARTIFACT_TEMPLATES = {
     ),
     CaseStage.SPECIFICATION_V1: (
         "06-specification-v1.md",
-        "# 说明书 V1\n\n> 围绕 Claims V1 补充替代方案、参数、数据结构、模块交互、异常路径和部署方式。\n",
+        "# 说明书 V1\n\n"
+        "> 围绕 Claims V1 补充替代方案、参数、数据结构、模块交互、"
+        "异常路径和部署方式。\n",
     ),
     CaseStage.SUPPORT_CANDIDATES: (
         "07-support-candidates.md",
@@ -143,7 +146,9 @@ ARTIFACT_TEMPLATES = {
     ),
     CaseStage.CLAIMS_V2: (
         "08-claims-v2.md",
-        "# Claims V2\n\n> 在完整说明书和支持候选池基础上修订。为每个独立权利要求限定添加内部追踪标记，如 `[I1-L1]`；DOCX 输出时移除标记。\n",
+        "# Claims V2\n\n"
+        "> 在完整说明书和支持候选池基础上修订。为每个独立权利要求限定"
+        "添加内部追踪标记，如 `[I1-L1]`；DOCX 输出时移除标记。\n",
     ),
     CaseStage.CLAIM_SUPPORT_MAP: (
         "09-claim-support-map.md",
@@ -248,8 +253,14 @@ def advance_stage(
         raise ValueError(f"Unknown case stage: {target_stage}") from exc
     expected_index = CASE_STAGE_ORDER.index(current) + 1
     if expected_index >= len(CASE_STAGE_ORDER) or CASE_STAGE_ORDER[expected_index] != target:
-        expected = CASE_STAGE_ORDER[expected_index].value if expected_index < len(CASE_STAGE_ORDER) else "none"
-        raise ValueError(f"Illegal stage transition {current.value} -> {target.value}; expected {expected}")
+        expected = (
+            CASE_STAGE_ORDER[expected_index].value
+            if expected_index < len(CASE_STAGE_ORDER)
+            else "none"
+        )
+        raise ValueError(
+            f"Illegal stage transition {current.value} -> {target.value}; expected {expected}"
+        )
 
     if target == CaseStage.FEATURE_MATRIX:
         ranking = _load_json(case_dir / "02-candidate-ranking.json", "candidate ranking")
@@ -261,7 +272,9 @@ def advance_stage(
         raise ValueError("Current stage gate failed: " + "; ".join(errors))
     if close_technical_questions:
         status["technical_questions_open"] = False
-    if target == CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW and status.get("technical_questions_open"):
+    if target == CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW and status.get(
+        "technical_questions_open"
+    ):
         raise ValueError("Technical content questions remain open")
     if target == CaseStage.DOCX_PACKAGE_RENDERED:
         docx_errors = _validate_docx_package(case_dir, status)
@@ -307,8 +320,12 @@ def validate_case_workspace(case_dir: Path) -> list[str]:
 def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) -> list[str]:
     validators: dict[CaseStage, Callable[[Path, dict[str, Any]], list[str]]] = {
         CaseStage.PROJECT_SNAPSHOT: _validate_snapshot,
-        CaseStage.EVIDENCE_MAP: lambda root, _: _validate_table(root / "01-code-evidence-map.md", 1),
-        CaseStage.INVENTION_CANDIDATES: lambda root, _: _validate_table(root / "02-invention-candidates.md", 3, 5),
+        CaseStage.EVIDENCE_MAP: lambda root, _: _validate_table(
+            root / "01-code-evidence-map.md", 1
+        ),
+        CaseStage.INVENTION_CANDIDATES: lambda root, _: _validate_table(
+            root / "02-invention-candidates.md", 3, 5
+        ),
         CaseStage.FIRST_SEARCH: lambda root, _: _validate_search(
             root / "03-prior-art-search",
             {row[0] for row in _markdown_data_rows(root / "02-invention-candidates.md") if row},
@@ -316,8 +333,12 @@ def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) ->
         CaseStage.CANDIDATE_RANKING: _validate_ranking,
         CaseStage.FEATURE_MATRIX: lambda root, _: _validate_table(root / "04-feature-matrix.md", 1),
         CaseStage.CLAIMS_V1: lambda root, _: _validate_draft(root / "05-claims-v1.md"),
-        CaseStage.SPECIFICATION_V1: lambda root, _: _validate_draft(root / "06-specification-v1.md"),
-        CaseStage.SUPPORT_CANDIDATES: lambda root, _: _validate_table(root / "07-support-candidates.md", 1),
+        CaseStage.SPECIFICATION_V1: lambda root, _: _validate_draft(
+            root / "06-specification-v1.md"
+        ),
+        CaseStage.SUPPORT_CANDIDATES: lambda root, _: _validate_table(
+            root / "07-support-candidates.md", 1
+        ),
         CaseStage.CLAIMS_V2: lambda root, _: _validate_draft(root / "08-claims-v2.md"),
         CaseStage.CLAIM_SUPPORT_MAP: _validate_support_map,
         CaseStage.FINAL_SEARCH: lambda root, _: _validate_search(root / "10-final-search"),
@@ -427,7 +448,9 @@ def _validate_search(path: Path, required_candidate_ids: set[str] | None = None)
         searched = {str(record.get("candidate_id", "")) for record in records}
         missing_candidates = sorted(required_candidate_ids - searched)
         if missing_candidates:
-            errors.append("First search does not cover candidates: " + ", ".join(missing_candidates))
+            errors.append(
+                "First search does not cover candidates: " + ", ".join(missing_candidates)
+            )
     return errors
 
 
@@ -464,7 +487,11 @@ def _validate_ranking(case_dir: Path, _: dict[str, Any]) -> list[str]:
 def _validate_draft(path: Path) -> list[str]:
     if not path.exists():
         return [f"Missing case artifact: {path.name}"]
-    meaningful = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip() and not line.startswith(("#", ">"))]
+    meaningful = [
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith(("#", ">"))
+    ]
     return [] if meaningful else [f"{path.name} has no draft content"]
 
 
@@ -474,21 +501,31 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
     if table_errors:
         return table_errors
     claims_path = case_dir / "08-claims-v2.md"
-    labels = set(re.findall(r"\[(I\d+-L\d+)\]", claims_path.read_text(encoding="utf-8"))) if claims_path.exists() else set()
+    labels = (
+        set(re.findall(r"\[(I\d+-L\d+)\]", claims_path.read_text(encoding="utf-8")))
+        if claims_path.exists()
+        else set()
+    )
     errors = []
     if not labels:
         errors.append("Claims V2 must label every independent-claim limitation with [I<n>-L<n>]")
     mapped_labels: set[str] = set()
     for row_number, cells in enumerate(_markdown_data_rows(path), 1):
         if len(cells) < 5 or any(not cell.strip() for cell in cells[:5]):
-            errors.append(f"Claim support row {row_number} must map limitation, engineering source, specification support, technical effect, and status")
+            errors.append(
+                f"Claim support row {row_number} must map limitation, engineering source, "
+                "specification support, technical effect, and status"
+            )
             continue
         if cells[4].strip().lower() in {"unsupported", "unresolved", "待支持", "待确认", "不支持"}:
             errors.append(f"Claim support row {row_number} remains unsupported or unresolved")
         mapped_labels.update(re.findall(r"I\d+-L\d+", cells[0]))
     missing_labels = sorted(labels - mapped_labels)
     if missing_labels:
-        errors.append("Claim support map is missing independent-claim limitations: " + ", ".join(missing_labels))
+        errors.append(
+            "Claim support map is missing independent-claim limitations: "
+            + ", ".join(missing_labels)
+        )
     return errors
 
 
@@ -497,7 +534,16 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
     if not path.exists():
         return ["Missing case artifact: 11-final-audit.md"]
     text = path.read_text(encoding="utf-8")
-    required = ("新颖性", "创造性", "专利客体", "清楚性与支持性", "充分公开", "单一性与拆案", "修改依据", "敏感信息")
+    required = (
+        "新颖性",
+        "创造性",
+        "专利客体",
+        "清楚性与支持性",
+        "充分公开",
+        "单一性与拆案",
+        "修改依据",
+        "敏感信息",
+    )
     errors = []
     for section in required:
         heading = f"## {section}"
@@ -513,7 +559,11 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
 
 
 def _validate_content_ready(_: Path, status: dict[str, Any]) -> list[str]:
-    return ["Technical content questions remain open"] if status.get("technical_questions_open") else []
+    return (
+        ["Technical content questions remain open"]
+        if status.get("technical_questions_open")
+        else []
+    )
 
 
 def _validate_independent_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -523,7 +573,11 @@ def _validate_independent_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
 def _validate_docx_package(case_dir: Path, _: dict[str, Any]) -> list[str]:
     path = case_dir / "filing-package" / "docx"
     names = [item.name for item in path.glob("*.docx")] if path.exists() else []
-    return [f"Missing rendered DOCX subject: {subject}" for subject in REQUIRED_DOCX_SUBJECTS if not any(subject in name for name in names)]
+    return [
+        f"Missing rendered DOCX subject: {subject}"
+        for subject in REQUIRED_DOCX_SUBJECTS
+        if not any(subject in name for name in names)
+    ]
 
 
 def _create_snapshot(project: Path) -> dict[str, Any]:
@@ -532,7 +586,11 @@ def _create_snapshot(project: Path) -> dict[str, Any]:
     scan = scan_repository(project)
     files = [_file_record(project, item) for item in scan["files"]]
     git = _git_snapshot(project)
-    snapshot_type = "git_commit" if git.get("is_repository") and git.get("worktree_clean") else "directory_manifest"
+    snapshot_type = (
+        "git_commit"
+        if git.get("is_repository") and git.get("worktree_clean")
+        else "directory_manifest"
+    )
     digest = _manifest_digest(files)
     return {
         "snapshot_type": snapshot_type,
@@ -556,7 +614,13 @@ def _archive_snapshot(project: Path) -> dict[str, Any]:
             if info.is_dir() or name.is_absolute() or ".." in name.parts:
                 continue
             content = archive.read(info)
-            files.append({"path": str(name), "size": info.file_size, "sha256": hashlib.sha256(content).hexdigest()})
+            files.append(
+                {
+                    "path": str(name),
+                    "size": info.file_size,
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+            )
     archive_sha = hashlib.sha256(project.read_bytes()).hexdigest()
     return {
         "snapshot_type": "uploaded_archive",
@@ -574,7 +638,9 @@ def _archive_snapshot(project: Path) -> dict[str, Any]:
 
 def _git_snapshot(project: Path) -> dict[str, Any]:
     def run(*args: str) -> str:
-        completed = subprocess.run(["git", "-C", str(project), *args], check=False, capture_output=True, text=True)
+        completed = subprocess.run(
+            ["git", "-C", str(project), *args], check=False, capture_output=True, text=True
+        )
         return completed.stdout.strip() if completed.returncode == 0 else ""
 
     head = run("rev-parse", "--verify", "HEAD")
@@ -598,7 +664,9 @@ def _file_record(project: Path, item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _manifest_digest(files: list[dict[str, Any]]) -> str:
-    normalized = "\n".join(f"{item['path']}\0{item['sha256']}" for item in sorted(files, key=lambda row: row["path"]))
+    normalized = "\n".join(
+        f"{item['path']}\0{item['sha256']}" for item in sorted(files, key=lambda row: row["path"])
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
@@ -625,9 +693,15 @@ def _validate_history(status: dict[str, Any]) -> list[str]:
         current = CaseStage(status.get("current_stage", ""))
     except ValueError:
         return [f"Unknown current_stage: {status.get('current_stage')}"]
-    history = [entry.get("stage") for entry in status.get("stage_history", []) if isinstance(entry, dict)]
+    history = [
+        entry.get("stage") for entry in status.get("stage_history", []) if isinstance(entry, dict)
+    ]
     expected = [stage.value for stage in CASE_STAGE_ORDER[: CASE_STAGE_ORDER.index(current) + 1]]
-    return [] if history == expected else ["stage_history must be the exact ordered prefix ending at current_stage"]
+    return (
+        []
+        if history == expected
+        else ["stage_history must be the exact ordered prefix ending at current_stage"]
+    )
 
 
 def _load_json(path: Path, label: str) -> dict[str, Any]:

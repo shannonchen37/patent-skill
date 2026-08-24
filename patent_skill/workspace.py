@@ -6,7 +6,6 @@ from typing import Any
 
 from .models import STATE_ORDER, WorkspaceState
 
-
 FORBIDDEN_STATE = "FILING_READY"
 REQUIRED_REVIEW_ARTIFACTS = (
     "drafting/{id}/claims-v2.md",
@@ -26,9 +25,13 @@ def can_transition(current: WorkspaceState, target: WorkspaceState) -> bool:
 def set_state(status_file: Path, target: str) -> dict[str, Any]:
     if target == FORBIDDEN_STATE:
         raise ValueError("FILING_READY cannot be granted automatically")
-    status = json.loads(status_file.read_text(encoding="utf-8")) if status_file.exists() else {
-        "state": WorkspaceState.DISCOVERY.value,
-    }
+    status = (
+        json.loads(status_file.read_text(encoding="utf-8"))
+        if status_file.exists()
+        else {
+            "state": WorkspaceState.DISCOVERY.value,
+        }
+    )
     current = WorkspaceState(status["state"])
     destination = WorkspaceState(target)
     if current != destination and not can_transition(current, destination):
@@ -57,4 +60,6 @@ def validate_workspace(root: Path, invention_id: str = "P001") -> list[str]:
 
 
 def validate_redaction(text: str, forbidden: list[str]) -> list[str]:
-    return [f"Internal value leaked into public draft: {value}" for value in forbidden if value in text]
+    return [
+        f"Internal value leaked into public draft: {value}" for value in forbidden if value in text
+    ]

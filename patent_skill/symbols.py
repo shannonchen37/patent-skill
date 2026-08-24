@@ -9,12 +9,13 @@ from typing import Any
 from .scanner import LANGUAGES
 from .security import should_ignore
 
-
 PATTERNS = {
     "JavaScript": re.compile(r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)|^class\s+(\w+)"),
     "TypeScript": re.compile(r"^(?:export\s+)?(?:async\s+)?function\s+(\w+)|^class\s+(\w+)"),
     "Go": re.compile(r"^func\s+(?:\([^)]*\)\s*)?(\w+)"),
-    "Java": re.compile(r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:class\s+)?(\w+)\s*\("),
+    "Java": re.compile(
+        r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:class\s+)?(\w+)\s*\("
+    ),
     "Rust": re.compile(r"^\s*(?:pub\s+)?fn\s+(\w+)"),
     "C": re.compile(r"^\s*[\w*\s]+\s+(\w+)\s*\([^;]*\)\s*\{"),
     "C++": re.compile(r"^\s*[\w:*&<>\s]+\s+(\w+)\s*\([^;]*\)\s*\{"),
@@ -47,12 +48,18 @@ def _python_symbols(file: str, text: str) -> list[dict[str, Any]]:
     for node in ast.walk(tree):
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             kind = "class" if isinstance(node, ast.ClassDef) else "function"
-            result.append({
-                "file": file, "language": "Python", "symbol_type": kind,
-                "symbol": node.name, "parent": "", "start_line": node.lineno,
-                "end_line": getattr(node, "end_lineno", node.lineno),
-                "docstring": ast.get_docstring(node) or "",
-            })
+            result.append(
+                {
+                    "file": file,
+                    "language": "Python",
+                    "symbol_type": kind,
+                    "symbol": node.name,
+                    "parent": "",
+                    "start_line": node.lineno,
+                    "end_line": getattr(node, "end_lineno", node.lineno),
+                    "docstring": ast.get_docstring(node) or "",
+                }
+            )
     return result
 
 
@@ -65,11 +72,18 @@ def _fallback_symbols(file: str, language: str, text: str) -> list[dict[str, Any
         match = pattern.search(line)
         if match:
             name = next(group for group in match.groups() if group)
-            result.append({
-                "file": file, "language": language, "symbol_type": "symbol",
-                "symbol": name, "parent": "", "start_line": line_no,
-                "end_line": line_no, "docstring": "",
-            })
+            result.append(
+                {
+                    "file": file,
+                    "language": language,
+                    "symbol_type": "symbol",
+                    "symbol": name,
+                    "parent": "",
+                    "start_line": line_no,
+                    "end_line": line_no,
+                    "docstring": "",
+                }
+            )
     return result
 
 

@@ -28,5 +28,7 @@ def test_ready_for_review_requires_final_eligibility_and_unity(tmp_path: Path) -
 
 
 def test_internal_evidence_redaction() -> None:
-    errors = validate_redaction("draft mentions src/internal/customer_router.py", ["src/internal/customer_router.py"])
+    errors = validate_redaction(
+        "draft mentions src/internal/customer_router.py", ["src/internal/customer_router.py"]
+    )
     assert errors

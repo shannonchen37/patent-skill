@@ -3,12 +3,23 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
-
 BLOCKED_NAMES = {".env", "id_rsa", "id_ed25519", "credentials.json"}
 BLOCKED_PATTERNS = ("*.pem", "*.key", "secrets.*", "*token*", "*password*")
 IGNORED_DIRS = {
-    ".git", ".idea", ".vscode", ".venv", "venv", "node_modules", "vendor",
-    "dist", "build", "target", "__pycache__", "coverage", ".cache", "patent-workspace",
+    ".git",
+    ".idea",
+    ".vscode",
+    ".venv",
+    "venv",
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    "target",
+    "__pycache__",
+    "coverage",
+    ".cache",
+    "patent-workspace",
     "patent-case",
 }
 

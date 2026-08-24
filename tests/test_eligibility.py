@@ -19,10 +19,17 @@ def test_pure_software_rejected_for_utility_model() -> None:
 
 def test_normal_draft_requires_search_but_presearch_can_continue() -> None:
     assert draft_prerequisites(
-        search_snapshot_id=None, feature_novelty_done=False,
-        feature_inventive_step_done=False, pre_search=False,
+        search_snapshot_id=None,
+        feature_novelty_done=False,
+        feature_inventive_step_done=False,
+        pre_search=False,
     )
-    assert draft_prerequisites(
-        search_snapshot_id=None, feature_novelty_done=False,
-        feature_inventive_step_done=False, pre_search=True,
-    ) == []
+    assert (
+        draft_prerequisites(
+            search_snapshot_id=None,
+            feature_novelty_done=False,
+            feature_inventive_step_done=False,
+            pre_search=True,
+        )
+        == []
+    )

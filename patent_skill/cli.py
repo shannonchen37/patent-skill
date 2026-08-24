@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from .case_workspace import advance_stage, init_case_workspace, validate_case_workspace

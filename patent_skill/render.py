@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 INTERNAL_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
@@ -51,8 +50,10 @@ def render_docx(source_dir: Path, output: Path) -> None:
         claim_style.base_style = document.styles["Normal"]
         claim_style.paragraph_format.keep_together = True
     for filename, title in (
-        ("claims-v2.md", "权利要求书"), ("specification.md", "说明书"),
-        ("abstract.md", "说明书摘要"), ("figures.md", "附图说明"),
+        ("claims-v2.md", "权利要求书"),
+        ("specification.md", "说明书"),
+        ("abstract.md", "说明书摘要"),
+        ("figures.md", "附图说明"),
     ):
         path = source_dir / filename
         if not path.exists():

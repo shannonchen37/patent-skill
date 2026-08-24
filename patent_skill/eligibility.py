@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 AI_ENTITIES = {"chatgpt", "openai", "gpt", "llm", "ai", "人工智能", "agent"}
 
 
@@ -28,8 +27,11 @@ def utility_model_eligibility(
 
 
 def draft_prerequisites(
-    *, search_snapshot_id: str | None, feature_novelty_done: bool,
-    feature_inventive_step_done: bool, pre_search: bool,
+    *,
+    search_snapshot_id: str | None,
+    feature_novelty_done: bool,
+    feature_inventive_step_done: bool,
+    pre_search: bool,
 ) -> list[str]:
     if pre_search:
         return []

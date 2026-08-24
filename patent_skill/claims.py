@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 CLAIM_RE = re.compile(r"^\s*(\d+)[\.、]\s*(.+)$")
 REFERENCE_RE = re.compile(r"根据权利要求\s*([\d、,，至到或和\-\s]+)\s*所述的?([^，,；;。]+)")
 INTERNAL_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)

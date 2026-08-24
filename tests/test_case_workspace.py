@@ -18,19 +18,22 @@ def _write(path: Path, text: str) -> None:
 
 
 def _search_record(candidate: str = "P001") -> str:
-    return json.dumps(
-        {
-            "database": "CNIPA",
-            "search_date": "2026-08-24",
-            "query": "状态反馈 调度",
-            "candidate_id": candidate,
-            "result_count": 3,
-            "reviewed_reference_ids": ["CN123"],
-            "verified_urls": ["https://example.test/CN123"],
-            "coverage_limitations": "公开网页覆盖有限",
-        },
-        ensure_ascii=False,
-    ) + "\n"
+    return (
+        json.dumps(
+            {
+                "database": "CNIPA",
+                "search_date": "2026-08-24",
+                "query": "状态反馈 调度",
+                "candidate_id": candidate,
+                "result_count": 3,
+                "reviewed_reference_ids": ["CN123"],
+                "verified_urls": ["https://example.test/CN123"],
+                "coverage_limitations": "公开网页覆盖有限",
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
 
 
 def test_init_case_creates_only_snapshot_and_uses_clean_git_commit(tmp_path: Path) -> None:
@@ -40,7 +43,18 @@ def test_init_case_creates_only_snapshot_and_uses_clean_git_commit(tmp_path: Pat
     subprocess.run(["git", "init", str(project)], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(project), "add", "core.py"], check=True)
     subprocess.run(
-        ["git", "-C", str(project), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "evidence"],
+        [
+            "git",
+            "-C",
+            str(project),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "evidence",
+        ],
         check=True,
         capture_output=True,
     )
@@ -68,11 +82,16 @@ def test_directory_and_uploaded_archive_snapshots_have_file_hashes(tmp_path: Pat
         output.writestr("src/core.py", "value = 1\n")
     archive_result = init_case_workspace(tmp_path / "archive-case", archive)
     assert archive_result["snapshot"]["snapshot_type"] == "uploaded_archive"
-    assert archive_result["snapshot"]["archive_sha256"] == archive_result["snapshot"]["snapshot_sha256"]
+    assert (
+        archive_result["snapshot"]["archive_sha256"]
+        == archive_result["snapshot"]["snapshot_sha256"]
+    )
     assert archive_result["snapshot"]["files"][0]["path"] == "src/core.py"
 
 
-def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditional(tmp_path: Path) -> None:
+def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditional(
+    tmp_path: Path,
+) -> None:
     project = tmp_path / "project"
     project.mkdir()
     case = tmp_path / "case"
@@ -83,22 +102,32 @@ def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditiona
     advance_stage(case, "EVIDENCE_MAP")
     _write(
         case / "01-code-evidence-map.md",
-        "| 编号 | 证据 | 步骤 | 状态变化 | 效果 | 状态 |\n|---|---|---|---|---|---|\n| E1 | core.py:1 | 处理 | A→B | 降低时延 | confirmed |\n",
+        "| 编号 | 证据 | 步骤 | 状态变化 | 效果 | 状态 |\n"
+        "|---|---|---|---|---|---|\n"
+        "| E1 | core.py:1 | 处理 | A→B | 降低时延 | confirmed |\n",
     )
     advance_stage(case, "INVENTION_CANDIDATES")
     _write(
         case / "02-invention-candidates.md",
         "| 候选 | 问题 | 机制 | 特征 | 效果 | 证据 | 风险 |\n|---|---|---|---|---|---|---|\n"
-        "| P1 | a | m | f | e | E1 | r |\n| P2 | b | m | f | e | E1 | r |\n| P3 | c | m | f | e | E1 | r |\n",
+        "| P1 | a | m | f | e | E1 | r |\n"
+        "| P2 | b | m | f | e | E1 | r |\n"
+        "| P3 | c | m | f | e | E1 | r |\n",
     )
     advance_stage(case, "FIRST_SEARCH")
-    _write(case / "03-prior-art-search" / "search-records.jsonl", "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")))
+    _write(
+        case / "03-prior-art-search" / "search-records.jsonl",
+        "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")),
+    )
     advance_stage(case, "CANDIDATE_RANKING")
     ranking_path = case / "02-candidate-ranking.json"
     ranking = json.loads(ranking_path.read_text(encoding="utf-8"))
     ranking.update(
         {
-            "ranked_candidates": [{"candidate_id": "P1", "score": 8}, {"candidate_id": "P2", "score": 7.9}],
+            "ranked_candidates": [
+                {"candidate_id": "P1", "score": 8},
+                {"candidate_id": "P2", "score": 7.9},
+            ],
             "selected_candidate_id": "P1",
             "strategic_ambiguity": True,
             "human_confirmation_required": True,
@@ -121,13 +150,28 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     advance_stage(case, "EVIDENCE_MAP")
     _write(case / "01-code-evidence-map.md", "| a | b |\n|---|---|\n| E1 | code |\n")
     advance_stage(case, "INVENTION_CANDIDATES")
-    _write(case / "02-invention-candidates.md", "| a | b |\n|---|---|\n| P1 | x |\n| P2 | y |\n| P3 | z |\n")
+    _write(
+        case / "02-invention-candidates.md",
+        "| a | b |\n|---|---|\n| P1 | x |\n| P2 | y |\n| P3 | z |\n",
+    )
     advance_stage(case, "FIRST_SEARCH")
-    _write(case / "03-prior-art-search" / "search-records.jsonl", "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")))
+    _write(
+        case / "03-prior-art-search" / "search-records.jsonl",
+        "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")),
+    )
     advance_stage(case, "CANDIDATE_RANKING")
     _write(
         case / "02-candidate-ranking.json",
-        json.dumps({"ranked_candidates": ["P1", "P2", "P3"], "selected_candidate_id": "P1", "strategic_ambiguity": False, "human_confirmation_required": False, "human_confirmation": "", "selection_reason": "明显最优"}),
+        json.dumps(
+            {
+                "ranked_candidates": ["P1", "P2", "P3"],
+                "selected_candidate_id": "P1",
+                "strategic_ambiguity": False,
+                "human_confirmation_required": False,
+                "human_confirmation": "",
+                "selection_reason": "明显最优",
+            }
+        ),
     )
     advance_stage(case, "FEATURE_MATRIX")
     _write(case / "04-feature-matrix.md", "| a | b |\n|---|---|\n| F1 | E1 |\n")
@@ -142,12 +186,31 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     advance_stage(case, "CLAIMS_V2")
     _write(case / "08-claims-v2.md", "# Claims V2\n\n1. 一种处理方法，包括 [I1-L1] 步骤A。\n")
     advance_stage(case, "CLAIM_SUPPORT_MAP")
-    _write(case / "09-claim-support-map.md", "| 限定 | 工程 | 说明书 | 效果 | 状态 |\n|---|---|---|---|---|\n| I1-L1 步骤A | E1 | 段落1 | 降低时延 | supported |\n")
+    _write(
+        case / "09-claim-support-map.md",
+        "| 限定 | 工程 | 说明书 | 效果 | 状态 |\n"
+        "|---|---|---|---|---|\n"
+        "| I1-L1 步骤A | E1 | 段落1 | 降低时延 | supported |\n",
+    )
     advance_stage(case, "FINAL_SEARCH")
     _write(case / "10-final-search" / "search-records.jsonl", _search_record())
     advance_stage(case, "FINAL_AUDIT")
-    sections = ("新颖性", "创造性", "专利客体", "清楚性与支持性", "充分公开", "单一性与拆案", "修改依据", "敏感信息")
-    _write(case / "11-final-audit.md", "# 最终审计\n\n" + "\n\n".join(f"## {section}\n\n已完成检查。" for section in sections) + "\n")
+    sections = (
+        "新颖性",
+        "创造性",
+        "专利客体",
+        "清楚性与支持性",
+        "充分公开",
+        "单一性与拆案",
+        "修改依据",
+        "敏感信息",
+    )
+    _write(
+        case / "11-final-audit.md",
+        "# 最终审计\n\n"
+        + "\n\n".join(f"## {section}\n\n已完成检查。" for section in sections)
+        + "\n",
+    )
 
     with pytest.raises(ValueError, match="Technical content questions"):
         advance_stage(case, "CONTENT_READY_FOR_ATTORNEY_REVIEW")
@@ -157,7 +220,10 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     assert not (case / "filing-package").exists()
 
     advance_stage(case, "INDEPENDENT_AUDIT")
-    _write(case / "filing-package" / "huang-audit" / "independent-audit.md", "# 独立审稿\n\n审计完成。\n")
+    _write(
+        case / "filing-package" / "huang-audit" / "independent-audit.md",
+        "# 独立审稿\n\n审计完成。\n",
+    )
     with pytest.raises(ValueError, match="DOCX render gate"):
         advance_stage(case, "DOCX_PACKAGE_RENDERED")
     for subject in REQUIRED_DOCX_SUBJECTS:

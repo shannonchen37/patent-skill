@@ -20,11 +20,13 @@ def novelty_assessment(
         all_disclosed = not missing
         if all_disclosed:
             destroying.append(reference.reference_id)
-        rows.append({
-            "reference_id": reference.reference_id,
-            "all_features_disclosed": all_disclosed,
-            "missing_features": missing,
-        })
+        rows.append(
+            {
+                "reference_id": reference.reference_id,
+                "all_features_disclosed": all_disclosed,
+                "missing_features": missing,
+            }
+        )
     return {
         "feature_ids": sorted(feature_ids),
         "references": rows,
@@ -49,5 +51,9 @@ def final_claim_recheck(
         flags.append("POTENTIAL NOVELTY ISSUE INTRODUCED OR REMAINS")
     if not flags:
         flags.append("CURRENT CLAIM SET CONSISTENT WITH LATEST SEARCH ASSESSMENT")
-    return {"removed_features": removed, "added_features": added, "flags": flags,
-            "novelty": assessment}
+    return {
+        "removed_features": removed,
+        "added_features": added,
+        "flags": flags,
+        "novelty": assessment,
+    }

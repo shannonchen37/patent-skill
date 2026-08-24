@@ -6,7 +6,10 @@ from patent_skill.claims import (
 
 
 def test_valid_simple_claims() -> None:
-    text = "1. 一种调度方法，其特征在于，包括获取资源状态。\n2. 根据权利要求1所述的调度方法，其特征在于，还包括预测资源状态。"
+    text = (
+        "1. 一种调度方法，其特征在于，包括获取资源状态。\n"
+        "2. 根据权利要求1所述的调度方法，其特征在于，还包括预测资源状态。"
+    )
     assert validate_claims_cn(text) == []
 
 
