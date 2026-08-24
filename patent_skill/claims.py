@@ -7,7 +7,7 @@ REFERENCE_RE = re.compile(r"根据权利要求\s*([\d、,，至到或和\-\s]+)\
 INTERNAL_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
-def parse_claims(text: str) -> dict[int, str]:
+def parse_claim_blocks(text: str) -> dict[int, list[str]]:
     claims: dict[int, list[str]] = {}
     current: int | None = None
     for line in text.splitlines():
@@ -17,7 +17,19 @@ def parse_claims(text: str) -> dict[int, str]:
             claims[current] = [match.group(2).strip()]
         elif current is not None and line.strip():
             claims[current].append(line.strip())
-    return {number: "".join(parts) for number, parts in claims.items()}
+    return claims
+
+
+def parse_claims(text: str) -> dict[int, str]:
+    return {number: "".join(parts) for number, parts in parse_claim_blocks(text).items()}
+
+
+def independent_claim_numbers(text: str) -> set[int]:
+    return {
+        number
+        for number, claim in parse_claims(INTERNAL_COMMENT_RE.sub("", text)).items()
+        if not REFERENCE_RE.search(claim)
+    }
 
 
 def validate_claims_cn(text: str) -> list[str]:
@@ -31,18 +43,17 @@ def validate_claims_cn(text: str) -> list[str]:
     multiple_dependent: set[int] = set()
     for number, claim in claims.items():
         match = REFERENCE_RE.search(claim)
-        if not match:
-            continue
-        refs = _reference_numbers(match.group(1))
-        if any(ref >= number for ref in refs):
-            errors.append(f"Claim {number} must reference only earlier claims")
-        is_multiple = len(refs) > 1
-        if is_multiple:
-            multiple_dependent.add(number)
-            if "或" not in match.group(1) and "任一" not in match.group(1):
-                errors.append(f"Claim {number} multiple dependency must be alternative")
-            if any(ref in multiple_dependent for ref in refs):
-                errors.append(f"Claim {number} must not depend on a multiple dependent claim")
+        if match:
+            refs = _reference_numbers(match.group(1))
+            if any(ref >= number for ref in refs):
+                errors.append(f"Claim {number} must reference only earlier claims")
+            is_multiple = len(refs) > 1
+            if is_multiple:
+                multiple_dependent.add(number)
+                if "或" not in match.group(1) and "任一" not in match.group(1):
+                    errors.append(f"Claim {number} multiple dependency must be alternative")
+                if any(ref in multiple_dependent for ref in refs):
+                    errors.append(f"Claim {number} must not depend on a multiple dependent claim")
         if not claim.rstrip().endswith("。"):
             errors.append(f"Claim {number} should end with a full stop")
     return errors

@@ -20,7 +20,7 @@ Use after Shannon has produced query plans for viable candidates. Candidate sele
 - public number, title, abstract and URL;
 - tool failure, timeout, dependency, WAF and zero-result notes.
 
-Write first-search material only under `03-prior-art-search/yjmm10/` and Claims-V2 material only under `10-final-search/yjmm10/`. Also write the required canonical fields to the enclosing `search-records.jsonl`. Shannon must independently verify documents, deduplicate results, inspect claims/descriptions, and write the canonical comparison. If yjmm10 or Playwright is unavailable, fall back to current public web/Google Patents search and record the coverage limitation.
+Write first-search material only under `03-prior-art-search/yjmm10/` and Claims-V2 material only under `10-final-search/yjmm10/`. Also write the required canonical fields to the enclosing `search-records.jsonl`. Final-search records must add `claim_id`, `limitation_ids`, and `search_scope`; cover every complete independent-claim combination and every distinguishing limitation declared in `08-claims-v2-structure.json`. Shannon must independently verify documents, deduplicate results, inspect claims/descriptions, and write the canonical comparison. If yjmm10 or Playwright is unavailable, fall back to current public web/Google Patents search and record the coverage limitation.
 
 Never copy an external search conclusion into the feature matrix without Shannon verification.
 
@@ -34,6 +34,7 @@ Invoke only after `08-claims-v2.md`, `06-specification-v1.md`, `09-claim-support
 - confirmed candidate and feature matrix;
 - prior-art reports;
 - Claims V2;
+- Claims V2 independent-claim structure;
 - specification, abstract and drawing source;
 - claim-support map;
 - unresolved-item list.
@@ -44,7 +45,7 @@ Use this handoff instruction:
 Treat Shannon patent-skill as the canonical case source. Do not reselect the invention, add unsupported technical facts, or overwrite canonical Markdown. Independently audit claim support, antecedent basis, terminology, formulas/parameters, drawing references, enablement and scope. Write findings under filing-package/huang-audit/. Generate separate DOCX files under filing-package/docx/ only from the reconciled canonical text. Mark every proposed substantive change for Shannon reconciliation.
 ```
 
-Huang findings are recommendations, not facts. Shannon accepts, rejects, or asks the user about each substantive finding, updates the audit trail, and regenerates DOCX only after reconciliation.
+Huang findings are recommendations, not facts. Shannon accepts, rejects, or asks the user about each substantive finding, updates the audit trail, and regenerates DOCX only after reconciliation. Before entering `DOCX_PACKAGE_RENDERED`, Shannon independently validates every required file as a distinct, nonempty OOXML document; filename presence alone is insufficient.
 
 ## Installation boundary
 

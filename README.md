@@ -24,11 +24,12 @@ Skill 不会收到代码后立即端到端生成专利。代码不能代替完�
 → 对候选发明做第一次查新（Shannon 主分析，yjmm10 可选增强 CNIPA）
 → 检索后排序；明显最优则继续，存在战略歧义时由用户确认主方向/拆案
 → 展示最接近现有技术和拟采用的区别特征，由用户确认
-→ Claims V1 → 用户确认独立权利要求技术链
-→ 说明书 V1 → support-candidates → Claims V2 → claim-support-map
-→ 第二次特征级查新和模拟审查
+→ Claims V1 → 中国权利要求结构校验 → 用户确认独权技术链
+→ 说明书 V1 → support-candidates → Claims V2 + 独权限定结构
+→ claim-support-map 与独权限定逐项一致
+→ 每项独权组合及关键区别限定的第二次检索和模拟审查
 → 内容达到 CONTENT_READY_FOR_ATTORNEY_REVIEW
-→ Huang 独立审稿 → Shannon 逐项协调 → 成套 DOCX
+→ Huang 独立审稿 → Shannon 逐项协调 → 经 OOXML 有效性检查的成套 DOCX
 → 中国专利代理师终审
 ```
 
@@ -98,6 +99,7 @@ patent-case/
 ├── 06-specification-v1.md
 ├── 07-support-candidates.md
 ├── 08-claims-v2.md
+├── 08-claims-v2-structure.json
 ├── 09-claim-support-map.md
 ├── 10-final-search/{shannon,yjmm10}/
 ├── 11-final-audit.md
@@ -119,7 +121,7 @@ python -m patent_skill.cli advance-stage patent-case EVIDENCE_MAP
 python -m patent_skill.cli validate-case patent-case
 ```
 
-阶段推进会验证当前产物，不允许手工跳过查新、支持性映射或审计。技术内容问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们已直接影响当前的新颖性或权属判断。
+阶段推进会验证当前产物，不允许手工跳过权利要求结构检查、查新、支持性映射或审计。Claims V2 的每个独权限定必须单独标记并同时出现在结构文件、支持映射和检索覆盖中。DOCX 必须是真实、非空的 OOXML 文件。技术内容问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们已直接影响当前的新颖性或权属判断。
 
 输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
 

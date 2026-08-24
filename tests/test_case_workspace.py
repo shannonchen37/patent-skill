@@ -7,6 +7,10 @@ import pytest
 
 from patent_skill.case_workspace import (
     REQUIRED_DOCX_SUBJECTS,
+    _validate_claims_stage,
+    _validate_docx_file,
+    _validate_final_search,
+    _validate_support_map,
     advance_stage,
     init_case_workspace,
     validate_case_workspace,
@@ -34,6 +38,41 @@ def _search_record(candidate: str = "P001") -> str:
         )
         + "\n"
     )
+
+
+def _final_search_record(
+    claim_id: str = "I1",
+    limitation_ids: tuple[str, ...] = ("I1-L1",),
+    scope: str = "claim_combination",
+) -> str:
+    record = json.loads(_search_record().strip())
+    record.update(
+        {
+            "claim_id": claim_id,
+            "limitation_ids": list(limitation_ids),
+            "search_scope": scope,
+        }
+    )
+    return json.dumps(record, ensure_ascii=False) + "\n"
+
+
+def _write_valid_docx(path: Path, body: str = "有效专利文档正文") -> None:
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        "</Types>"
+    )
+    document = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body><w:p><w:r><w:t>{body}</w:t></w:r></w:p></w:body></w:document>"
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("word/document.xml", document)
+        archive.writestr("docProps/validation-padding.bin", bytes(range(256)) * 8)
 
 
 def test_init_case_creates_only_snapshot_and_uses_clean_git_commit(tmp_path: Path) -> None:
@@ -184,7 +223,25 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     assert not (case / "09-claim-support-map.md").exists()
     _write(case / "07-support-candidates.md", "| a | b |\n|---|---|\n| 步骤A | E1 |\n")
     advance_stage(case, "CLAIMS_V2")
-    _write(case / "08-claims-v2.md", "# Claims V2\n\n1. 一种处理方法，包括 [I1-L1] 步骤A。\n")
+    _write(
+        case / "08-claims-v2.md",
+        "# Claims V2\n\n1. 一种处理方法，其特征在于，包括：\n[I1-L1] 执行步骤A。\n",
+    )
+    _write(
+        case / "08-claims-v2-structure.json",
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1"],
+                        "distinguishing_limitation_ids": ["I1-L1"],
+                    }
+                ]
+            }
+        ),
+    )
     advance_stage(case, "CLAIM_SUPPORT_MAP")
     _write(
         case / "09-claim-support-map.md",
@@ -194,6 +251,9 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     )
     advance_stage(case, "FINAL_SEARCH")
     _write(case / "10-final-search" / "search-records.jsonl", _search_record())
+    with pytest.raises(ValueError, match="Final search"):
+        advance_stage(case, "FINAL_AUDIT")
+    _write(case / "10-final-search" / "search-records.jsonl", _final_search_record())
     advance_stage(case, "FINAL_AUDIT")
     sections = (
         "新颖性",
@@ -227,7 +287,7 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
     with pytest.raises(ValueError, match="DOCX render gate"):
         advance_stage(case, "DOCX_PACKAGE_RENDERED")
     for subject in REQUIRED_DOCX_SUBJECTS:
-        (case / "filing-package" / "docx" / f"{subject}.docx").write_bytes(b"docx")
+        _write_valid_docx(case / "filing-package" / "docx" / f"{subject}.docx", subject)
     advance_stage(case, "DOCX_PACKAGE_RENDERED")
     assert validate_case_workspace(case) == []
 
@@ -246,3 +306,120 @@ def test_manual_stage_jump_and_filing_ready_are_rejected(tmp_path: Path) -> None
     status["current_stage"] = "FILING_READY"
     status_path.write_text(json.dumps(status), encoding="utf-8")
     assert "FILING_READY cannot be set by this tool" in validate_case_workspace(case)
+
+
+def test_claims_v1_gate_runs_chinese_claim_validator(tmp_path: Path) -> None:
+    path = tmp_path / "claims.md"
+    _write(
+        path,
+        "# Claims V1\n\n"
+        "1. 一种方法，其特征在于，包括A。\n"
+        "3. 根据权利要求4所述的方法，其特征在于，包括B。\n",
+    )
+    errors = _validate_claims_stage(path)
+    assert any("consecutive" in error for error in errors)
+    assert any("earlier" in error for error in errors)
+
+
+def test_claim_structure_rejects_unlabelled_limitation_and_mismatch(tmp_path: Path) -> None:
+    claims = tmp_path / "claims-v2.md"
+    structure = tmp_path / "claims-v2-structure.json"
+    _write(
+        claims,
+        "1. 一种方法，其特征在于，包括：\n"
+        "[I1-L1] 获取数据；\n"
+        "对所述数据进行状态预测；\n"
+        "[I1-L3] 根据状态预测结果调整资源。\n",
+    )
+    _write(
+        structure,
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1", "I1-L2", "I1-L3"],
+                        "distinguishing_limitation_ids": ["I1-L2", "I1-L3"],
+                    }
+                ]
+            }
+        ),
+    )
+    errors = _validate_claims_stage(claims, structure)
+    assert any("unlabelled substantive limitation" in error for error in errors)
+    assert any("unique and consecutive" in error for error in errors)
+    assert any("exactly match" in error for error in errors)
+
+
+def test_docx_gate_rejects_fake_and_empty_ooxml(tmp_path: Path) -> None:
+    fake = tmp_path / "fake.docx"
+    fake.write_bytes(b"docx")
+    assert any("not a valid OOXML ZIP" in error for error in _validate_docx_file(fake))
+
+    empty = tmp_path / "empty.docx"
+    _write_valid_docx(empty, "")
+    assert any("body is empty" in error for error in _validate_docx_file(empty))
+
+    valid = tmp_path / "valid.docx"
+    _write_valid_docx(valid)
+    assert _validate_docx_file(valid) == []
+
+
+def test_support_map_requires_exactly_one_row_per_structured_limitation(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "08-claims-v2-structure.json",
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1", "I1-L2"],
+                        "distinguishing_limitation_ids": ["I1-L2"],
+                    }
+                ]
+            }
+        ),
+    )
+    _write(
+        tmp_path / "09-claim-support-map.md",
+        "| 限定 | 工程 | 说明书 | 效果 | 状态 |\n"
+        "|---|---|---|---|---|\n"
+        "| I1-L1 | E1 | 段落1 | 效果1 | supported |\n"
+        "| I1-L1 | E1 | 段落1 | 效果1 | supported |\n",
+    )
+    errors = _validate_support_map(tmp_path, {})
+    assert any("mapped more than once" in error for error in errors)
+    assert any("missing independent-claim limitations: I1-L2" in error for error in errors)
+
+
+def test_final_search_requires_claim_combinations_and_distinguishing_coverage(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "08-claims-v2-structure.json",
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1", "I1-L2"],
+                        "distinguishing_limitation_ids": ["I1-L2"],
+                    }
+                ]
+            }
+        ),
+    )
+    search_dir = tmp_path / "10-final-search"
+    search_dir.mkdir()
+    _write(
+        search_dir / "search-records.jsonl",
+        _final_search_record("I1", ("I1-L1",), "distinguishing_limitation"),
+    )
+    errors = _validate_final_search(tmp_path, {})
+    assert any("full combination query" in error for error in errors)
+    assert any("distinguishing limitations: I1-L2" in error for error in errors)

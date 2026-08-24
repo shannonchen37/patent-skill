@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 INTERNAL_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+TRACE_LABEL = re.compile(r"\[I\d+-L\d+\]\s*")
 
 
 def render_docx(source_dir: Path, output: Path) -> None:
@@ -60,6 +61,8 @@ def render_docx(source_dir: Path, output: Path) -> None:
             continue
         document.add_heading(title, level=1)
         text = INTERNAL_COMMENT.sub("", path.read_text(encoding="utf-8"))
+        if filename == "claims-v2.md":
+            text = TRACE_LABEL.sub("", text)
         for line in text.splitlines():
             if line.startswith("# "):
                 document.add_heading(line[2:], level=2)

@@ -10,7 +10,9 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Any
+from xml.etree import ElementTree
 
+from .claims import independent_claim_numbers, parse_claim_blocks, validate_claims_cn
 from .scanner import scan_repository
 
 
@@ -45,6 +47,11 @@ SEARCH_FIELDS = {
     "verified_urls",
     "coverage_limitations",
 }
+FINAL_SEARCH_FIELDS = {"claim_id", "limitation_ids", "search_scope"}
+FINAL_SEARCH_SCOPES = {"claim_combination", "distinguishing_limitation"}
+TRACE_LABEL_RE = re.compile(r"\[(I\d+-L\d+)\]")
+TRACE_LINE_RE = re.compile(r"^[；;、]?\s*\[(I\d+-L\d+)\]\s*(.+)$")
+MIN_DOCX_SIZE = 1024
 REQUIRED_DOCX_SUBJECTS = (
     "技术交底书",
     "权利要求书",
@@ -148,7 +155,7 @@ ARTIFACT_TEMPLATES = {
         "08-claims-v2.md",
         "# Claims V2\n\n"
         "> 在完整说明书和支持候选池基础上修订。为每个独立权利要求限定"
-        "添加内部追踪标记，如 `[I1-L1]`；DOCX 输出时移除标记。\n",
+        "单独换行并添加内部追踪标记，如 `[I1-L1]`；DOCX 输出时移除标记。\n",
     ),
     CaseStage.CLAIM_SUPPORT_MAP: (
         "09-claim-support-map.md",
@@ -332,16 +339,19 @@ def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) ->
         ),
         CaseStage.CANDIDATE_RANKING: _validate_ranking,
         CaseStage.FEATURE_MATRIX: lambda root, _: _validate_table(root / "04-feature-matrix.md", 1),
-        CaseStage.CLAIMS_V1: lambda root, _: _validate_draft(root / "05-claims-v1.md"),
+        CaseStage.CLAIMS_V1: lambda root, _: _validate_claims_stage(root / "05-claims-v1.md"),
         CaseStage.SPECIFICATION_V1: lambda root, _: _validate_draft(
             root / "06-specification-v1.md"
         ),
         CaseStage.SUPPORT_CANDIDATES: lambda root, _: _validate_table(
             root / "07-support-candidates.md", 1
         ),
-        CaseStage.CLAIMS_V2: lambda root, _: _validate_draft(root / "08-claims-v2.md"),
+        CaseStage.CLAIMS_V2: lambda root, _: _validate_claims_stage(
+            root / "08-claims-v2.md",
+            root / "08-claims-v2-structure.json",
+        ),
         CaseStage.CLAIM_SUPPORT_MAP: _validate_support_map,
-        CaseStage.FINAL_SEARCH: lambda root, _: _validate_search(root / "10-final-search"),
+        CaseStage.FINAL_SEARCH: _validate_final_search,
         CaseStage.FINAL_AUDIT: _validate_final_audit,
         CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW: _validate_content_ready,
         CaseStage.INDEPENDENT_AUDIT: _validate_independent_audit,
@@ -370,6 +380,11 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
         path = case_dir / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+        if stage == CaseStage.CLAIMS_V2:
+            _write_json(
+                case_dir / "08-claims-v2-structure.json",
+                {"independent_claims": []},
+            )
 
 
 def _prepare_search_dir(path: Path) -> None:
@@ -378,7 +393,8 @@ def _prepare_search_dir(path: Path) -> None:
     (path / "README.md").write_text(
         "# 检索记录\n\n将结构化记录逐行写入 search-records.jsonl。"
         "每行必须包含 database、search_date、query、candidate_id、result_count、"
-        "reviewed_reference_ids、verified_urls、coverage_limitations。\n",
+        "reviewed_reference_ids、verified_urls、coverage_limitations。"
+        "第二次检索还必须记录 claim_id、limitation_ids 和 search_scope。\n",
         encoding="utf-8",
     )
 
@@ -421,29 +437,8 @@ def _validate_table(path: Path, minimum: int, maximum: int | None = None) -> lis
 
 
 def _validate_search(path: Path, required_candidate_ids: set[str] | None = None) -> list[str]:
-    records_path = path / "search-records.jsonl"
-    if not records_path.exists():
-        return [f"Missing structured search log: {records_path.relative_to(path.parent)}"]
-    errors: list[str] = []
-    records = []
-    for line_number, line in enumerate(records_path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            errors.append(f"Invalid search JSON at line {line_number}")
-            continue
-        missing = sorted(SEARCH_FIELDS - record.keys())
-        if missing:
-            errors.append(f"Search line {line_number} missing fields: {', '.join(missing)}")
-        if not isinstance(record.get("reviewed_reference_ids"), list):
-            errors.append(f"Search line {line_number} reviewed_reference_ids must be a list")
-        if not isinstance(record.get("verified_urls"), list):
-            errors.append(f"Search line {line_number} verified_urls must be a list")
-        records.append(record)
-    if not records:
-        errors.append("Structured search log must contain at least one record")
+    errors, numbered_records = _read_search_records(path)
+    records = [record for _, record in numbered_records]
     if required_candidate_ids:
         searched = {str(record.get("candidate_id", "")) for record in records}
         missing_candidates = sorted(required_candidate_ids - searched)
@@ -452,6 +447,41 @@ def _validate_search(path: Path, required_candidate_ids: set[str] | None = None)
                 "First search does not cover candidates: " + ", ".join(missing_candidates)
             )
     return errors
+
+
+def _read_search_records(
+    path: Path, additional_fields: set[str] | None = None
+) -> tuple[list[str], list[tuple[int, dict[str, Any]]]]:
+    records_path = path / "search-records.jsonl"
+    if not records_path.exists():
+        return [f"Missing structured search log: {records_path.relative_to(path.parent)}"], []
+    errors: list[str] = []
+    records: list[tuple[int, dict[str, Any]]] = []
+    required_fields = SEARCH_FIELDS | (additional_fields or set())
+    for line_number, line in enumerate(records_path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            errors.append(f"Invalid search JSON at line {line_number}")
+            continue
+        if not isinstance(record, dict):
+            errors.append(f"Search line {line_number} must be a JSON object")
+            continue
+        missing = sorted(required_fields - record.keys())
+        if missing:
+            errors.append(f"Search line {line_number} missing fields: {', '.join(missing)}")
+        if not isinstance(record.get("reviewed_reference_ids"), list):
+            errors.append(f"Search line {line_number} reviewed_reference_ids must be a list")
+        if not isinstance(record.get("verified_urls"), list):
+            errors.append(f"Search line {line_number} verified_urls must be a list")
+        if not isinstance(record.get("query"), str) or not record["query"].strip():
+            errors.append(f"Search line {line_number} query must be non-empty")
+        records.append((line_number, record))
+    if not records:
+        errors.append("Structured search log must contain at least one record")
+    return errors, records
 
 
 def _validate_ranking(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -495,17 +525,144 @@ def _validate_draft(path: Path) -> list[str]:
     return [] if meaningful else [f"{path.name} has no draft content"]
 
 
+def _validate_claims_stage(path: Path, structure_path: Path | None = None) -> list[str]:
+    errors = _validate_draft(path)
+    if errors:
+        return errors
+    text = path.read_text(encoding="utf-8")
+    errors.extend(validate_claims_cn(text))
+    if structure_path is not None:
+        errors.extend(_validate_claim_structure(text, structure_path))
+    return errors
+
+
+def _validate_claim_structure(text: str, structure_path: Path) -> list[str]:
+    try:
+        structure = _load_json(structure_path, "Claims V2 structure")
+    except ValueError as exc:
+        return [str(exc)]
+    entries = structure.get("independent_claims")
+    if not isinstance(entries, list) or not entries:
+        return ["Claims V2 structure must contain independent_claims"]
+
+    blocks = parse_claim_blocks(text)
+    independent_numbers = independent_claim_numbers(text)
+    parsed: dict[str, list[str]] = {}
+    errors: list[str] = []
+    for number in sorted(independent_numbers):
+        claim_id = f"I{number}"
+        labels, label_errors = _parse_independent_limitation_lines(number, blocks[number])
+        parsed[claim_id] = labels
+        errors.extend(label_errors)
+
+    structured: dict[str, list[str]] = {}
+    for index, entry in enumerate(entries, 1):
+        if not isinstance(entry, dict):
+            errors.append(f"Claims V2 structure entry {index} must be an object")
+            continue
+        claim_id = entry.get("claim_id")
+        claim_number = entry.get("claim_number")
+        limitation_ids = entry.get("limitation_ids")
+        distinguishing_ids = entry.get("distinguishing_limitation_ids")
+        if claim_id != f"I{claim_number}":
+            errors.append(f"Claims V2 structure entry {index} has inconsistent claim ID")
+        if not isinstance(limitation_ids, list) or not limitation_ids:
+            errors.append(f"Claims V2 structure entry {index} requires limitation_ids")
+            continue
+        if len(limitation_ids) != len(set(limitation_ids)):
+            errors.append(f"Claims V2 structure entry {index} contains duplicate limitation IDs")
+        if not isinstance(distinguishing_ids, list) or not distinguishing_ids:
+            errors.append(
+                f"Claims V2 structure entry {index} requires distinguishing_limitation_ids"
+            )
+            distinguishing_ids = []
+        if not set(distinguishing_ids) <= set(limitation_ids):
+            errors.append(
+                f"Claims V2 structure entry {index} has distinguishing IDs outside the claim"
+            )
+        if isinstance(claim_id, str):
+            if claim_id in structured:
+                errors.append(f"Claims V2 structure contains duplicate claim ID {claim_id}")
+            structured[claim_id] = limitation_ids
+
+    if set(parsed) != set(structured):
+        errors.append("Claims V2 structure must cover exactly all independent claims")
+    for claim_id in sorted(set(parsed) & set(structured)):
+        if parsed[claim_id] != structured[claim_id]:
+            errors.append(
+                f"{claim_id} parser limitation IDs must exactly match the structured limitation IDs"
+            )
+    return errors
+
+
+def _parse_independent_limitation_lines(
+    claim_number: int, lines: list[str]
+) -> tuple[list[str], list[str]]:
+    claim_id = f"I{claim_number}"
+    labels: list[str] = []
+    errors: list[str] = []
+    for line_index, line in enumerate(lines):
+        line_labels = TRACE_LABEL_RE.findall(line)
+        if line_index == 0:
+            if line_labels:
+                errors.append(
+                    f"Independent claim {claim_number} must place its preamble on a separate "
+                    "line before trace-labelled limitations"
+                )
+            if len(lines) == 1 or not line.rstrip().endswith(("：", ":")):
+                errors.append(
+                    f"Independent claim {claim_number} preamble must end with a colon "
+                    "before separately labelled limitations"
+                )
+            continue
+        if not line_labels:
+            errors.append(
+                f"Independent claim {claim_number} has an unlabelled substantive limitation line"
+            )
+            continue
+        if len(line_labels) > 1:
+            errors.append(
+                f"Independent claim {claim_number} must place exactly one trace label "
+                "on each substantive limitation line"
+            )
+            continue
+        if line_index > 0 and not TRACE_LINE_RE.match(line):
+            errors.append(
+                f"Independent claim {claim_number} has an unlabelled substantive limitation line"
+            )
+            continue
+        label = line_labels[0]
+        if not label.startswith(f"{claim_id}-L"):
+            errors.append(
+                f"Trace label {label} does not belong to independent claim {claim_number}"
+            )
+        labels.append(label)
+    expected = [f"{claim_id}-L{index}" for index in range(1, len(labels) + 1)]
+    if labels != expected:
+        errors.append(
+            f"Independent claim {claim_number} trace labels must be unique and consecutive"
+        )
+    if not labels:
+        errors.append(f"Independent claim {claim_number} has no trace-labelled limitations")
+    return labels, errors
+
+
 def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
     path = case_dir / "09-claim-support-map.md"
     table_errors = _validate_table(path, 1)
     if table_errors:
         return table_errors
-    claims_path = case_dir / "08-claims-v2.md"
-    labels = (
-        set(re.findall(r"\[(I\d+-L\d+)\]", claims_path.read_text(encoding="utf-8")))
-        if claims_path.exists()
-        else set()
-    )
+    structure_path = case_dir / "08-claims-v2-structure.json"
+    try:
+        structure = _load_json(structure_path, "Claims V2 structure")
+    except ValueError as exc:
+        return [str(exc)]
+    labels = {
+        limitation_id
+        for entry in structure.get("independent_claims", [])
+        if isinstance(entry, dict)
+        for limitation_id in entry.get("limitation_ids", [])
+    }
     errors = []
     if not labels:
         errors.append("Claims V2 must label every independent-claim limitation with [I<n>-L<n>]")
@@ -519,12 +676,85 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
             continue
         if cells[4].strip().lower() in {"unsupported", "unresolved", "待支持", "待确认", "不支持"}:
             errors.append(f"Claim support row {row_number} remains unsupported or unresolved")
-        mapped_labels.update(re.findall(r"I\d+-L\d+", cells[0]))
+        row_labels = re.findall(r"I\d+-L\d+", cells[0])
+        if len(row_labels) != 1:
+            errors.append(f"Claim support row {row_number} must map exactly one limitation ID")
+            continue
+        label = row_labels[0]
+        if label in mapped_labels:
+            errors.append(f"Claim support limitation {label} is mapped more than once")
+        if label not in labels:
+            errors.append(f"Claim support row {row_number} maps unknown limitation {label}")
+        mapped_labels.add(label)
     missing_labels = sorted(labels - mapped_labels)
     if missing_labels:
         errors.append(
             "Claim support map is missing independent-claim limitations: "
             + ", ".join(missing_labels)
+        )
+    if len(_markdown_data_rows(path)) != len(labels):
+        errors.append("Claim support row count must equal the structured limitation count")
+    return errors
+
+
+def _validate_final_search(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    path = case_dir / "10-final-search"
+    errors, records = _read_search_records(path, FINAL_SEARCH_FIELDS)
+    try:
+        structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+    except ValueError as exc:
+        return errors + [str(exc)]
+
+    claims: dict[str, set[str]] = {}
+    distinguishing: set[str] = set()
+    for entry in structure.get("independent_claims", []):
+        if not isinstance(entry, dict):
+            continue
+        claim_id = entry.get("claim_id")
+        if not isinstance(claim_id, str):
+            continue
+        claims[claim_id] = set(entry.get("limitation_ids", []))
+        distinguishing.update(entry.get("distinguishing_limitation_ids", []))
+    if not claims:
+        errors.append("Final search requires at least one structured independent claim")
+
+    combination_coverage: set[str] = set()
+    limitation_coverage: set[str] = set()
+    for line_number, record in records:
+        scope = record.get("search_scope")
+        if scope not in FINAL_SEARCH_SCOPES:
+            errors.append(f"Final search line {line_number} has invalid search_scope")
+        limitation_ids = record.get("limitation_ids")
+        if not isinstance(limitation_ids, list) or not limitation_ids:
+            errors.append(
+                f"Final search line {line_number} limitation_ids must be a non-empty list"
+            )
+            continue
+        claim_id = record.get("claim_id")
+        if claim_id not in claims:
+            errors.append(f"Final search line {line_number} references unknown independent claim")
+            continue
+        unknown = set(limitation_ids) - claims[claim_id]
+        if unknown:
+            errors.append(
+                f"Final search line {line_number} references unknown limitations: "
+                + ", ".join(sorted(unknown))
+            )
+        limitation_coverage.update(limitation_ids)
+        if scope == "claim_combination" and claims[claim_id] <= set(limitation_ids):
+            combination_coverage.add(claim_id)
+
+    missing_claims = sorted(set(claims) - combination_coverage)
+    if missing_claims:
+        errors.append(
+            "Final search lacks a full combination query for independent claims: "
+            + ", ".join(missing_claims)
+        )
+    missing_distinctions = sorted(distinguishing - limitation_coverage)
+    if missing_distinctions:
+        errors.append(
+            "Final search does not cover distinguishing limitations: "
+            + ", ".join(missing_distinctions)
         )
     return errors
 
@@ -572,12 +802,56 @@ def _validate_independent_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
 
 def _validate_docx_package(case_dir: Path, _: dict[str, Any]) -> list[str]:
     path = case_dir / "filing-package" / "docx"
-    names = [item.name for item in path.glob("*.docx")] if path.exists() else []
-    return [
-        f"Missing rendered DOCX subject: {subject}"
-        for subject in REQUIRED_DOCX_SUBJECTS
-        if not any(subject in name for name in names)
-    ]
+    documents = list(path.glob("*.docx")) if path.exists() else []
+    errors: list[str] = []
+    used_documents: set[Path] = set()
+    for subject in sorted(REQUIRED_DOCX_SUBJECTS, key=len, reverse=True):
+        matches = sorted(
+            (
+                document
+                for document in documents
+                if subject in document.stem and document not in used_documents
+            ),
+            key=lambda document: len(document.stem),
+        )
+        if not matches:
+            errors.append(f"Missing rendered DOCX subject: {subject}")
+            continue
+        selected = matches[0]
+        used_documents.add(selected)
+        errors.extend(_validate_docx_file(selected))
+    return errors
+
+
+def _validate_docx_file(path: Path) -> list[str]:
+    errors: list[str] = []
+    if path.stat().st_size < MIN_DOCX_SIZE:
+        errors.append(f"DOCX is implausibly small: {path.name}")
+    if not zipfile.is_zipfile(path):
+        return errors + [f"DOCX is not a valid OOXML ZIP: {path.name}"]
+    try:
+        with zipfile.ZipFile(path) as archive:
+            corrupt = archive.testzip()
+            if corrupt:
+                errors.append(f"DOCX contains a corrupt ZIP member: {path.name}:{corrupt}")
+            names = set(archive.namelist())
+            for required in ("[Content_Types].xml", "word/document.xml"):
+                if required not in names:
+                    errors.append(f"DOCX missing {required}: {path.name}")
+            if "word/document.xml" in names:
+                try:
+                    root = ElementTree.fromstring(archive.read("word/document.xml"))
+                except ElementTree.ParseError:
+                    errors.append(f"DOCX has invalid word/document.xml: {path.name}")
+                else:
+                    body = "".join(
+                        node.text or "" for node in root.iter() if node.tag.endswith("}t")
+                    ).strip()
+                    if not body:
+                        errors.append(f"DOCX document body is empty: {path.name}")
+    except (OSError, zipfile.BadZipFile):
+        errors.append(f"DOCX cannot be opened as OOXML: {path.name}")
+    return errors
 
 
 def _create_snapshot(project: Path) -> dict[str, Any]:
