@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "shannonchen37"}]
-dependencies = []
+dependencies = ["jsonschema>=4.23"]
 
 [project.urls]
 Homepage = "https://github.com/shannonchen37/patent-skill"
@@ -26,6 +26,14 @@ patent-skill = "patent_skill.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["patent_skill"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas/engineering-provenance.schema.json" = "patent_skill/schemas/engineering-provenance.schema.json"
+"schemas/invention.schema.json" = "patent_skill/schemas/invention.schema.json"
+"schemas/case-feature-matrix.schema.json" = "patent_skill/schemas/case-feature-matrix.schema.json"
+"schemas/context-questions.schema.json" = "patent_skill/schemas/context-questions.schema.json"
+"schemas/application-metadata.schema.json" = "patent_skill/schemas/application-metadata.schema.json"
+"schemas/final-audit.schema.json" = "patent_skill/schemas/final-audit.schema.json"
 
 [tool.pytest.ini_options]
 addopts = "-q"

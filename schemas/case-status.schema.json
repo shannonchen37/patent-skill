@@ -7,8 +7,6 @@
     "case_dir",
     "project_source",
     "current_stage",
-    "technical_questions_open",
-    "filing_context_questions_open",
     "revision",
     "revision_history",
     "stage_history",
@@ -40,8 +38,6 @@
         "DOCX_PACKAGE_RENDERED"
       ]
     },
-    "technical_questions_open": {"type": "boolean"},
-    "filing_context_questions_open": {"type": "boolean"},
     "revision": {"type": "integer", "minimum": 0},
     "revision_history": {"type": "array"},
     "stage_history": {

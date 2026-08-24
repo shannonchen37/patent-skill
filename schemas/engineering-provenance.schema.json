@@ -1,35 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://patent-skill.dev/schemas/engineering-provenance.schema.json",
-  "title": "Engineering Provenance",
-  "type": "array",
-  "items": {
+  "title": "Canonical Engineering Evidence Map",
+  "type": "object",
+  "required": ["evidence"],
+  "properties": {"evidence": {"type": "array", "minItems": 1, "items": {
     "type": "object",
-    "required": ["feature_id", "invention_id", "feature", "status", "evidence"],
+    "required": ["evidence_id", "source", "processing_step", "state_change", "technical_effect", "status"],
     "properties": {
-      "feature_id": {"type": "string", "pattern": "^F[0-9]{3,}$"},
-      "invention_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
-      "feature": {"type": "string", "minLength": 1},
-      "status": {
-        "enum": ["code-supported", "document-supported", "experiment-supported", "developer-confirmed", "proposed-but-enabled", "insufficiently-supported", "contradicted"]
-      },
-      "inventor_confirmation": {"type": "boolean"},
-      "enablement_review_required": {"type": "boolean"},
-      "evidence": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "required": ["type", "path", "explanation"],
-          "properties": {
-            "type": {"type": "string"}, "path": {"type": "string"},
-            "symbol": {"type": "string"}, "start_line": {"type": "integer", "minimum": 0},
-            "end_line": {"type": "integer", "minimum": 0}, "explanation": {"type": "string"},
-            "classification": {"enum": ["internal-only", "drafting-usable", "filing-disclosable", "redaction-required"]}
-          },
-          "additionalProperties": false
-        }
-      }
-    },
-    "additionalProperties": true
-  }
+      "evidence_id": {"type": "string", "pattern": "^E[0-9]{3,}$"},
+      "source": {"type": "object", "required": ["path", "sha256"], "properties": {
+        "path": {"type": "string", "minLength": 1}, "symbol": {"type": "string"},
+        "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }, "additionalProperties": false},
+      "processing_step": {"type": "string", "minLength": 4},
+      "state_change": {"type": "string", "minLength": 4},
+      "technical_effect": {"type": "string", "minLength": 4},
+      "status": {"enum": ["code-supported", "document-supported", "experiment-supported", "developer-confirmed"]}
+    }, "additionalProperties": false
+  }}},
+  "additionalProperties": false
 }

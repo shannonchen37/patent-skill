@@ -11,11 +11,13 @@ from patent_skill.case_workspace import (
     REQUIRED_DOCX_SUBJECTS,
     _validate_claims_stage,
     _validate_docx_file,
+    _validate_final_audit,
     _validate_final_search,
     _validate_support_map,
     advance_stage,
     export_case_package,
     init_case_workspace,
+    resolve_case_question,
     revise_case_stage,
     validate_case_workspace,
 )
@@ -120,6 +122,106 @@ def _complete_application(case: Path) -> None:
     )
 
 
+def _complete_evidence(case: Path) -> None:
+    snapshot = json.loads(
+        (case / "00-project-snapshot" / "snapshot-manifest.json").read_text(encoding="utf-8")
+    )
+    source = snapshot["files"][0]
+    _write(
+        case / "01-code-evidence-map.json",
+        json.dumps(
+            {
+                "evidence": [
+                    {
+                        "evidence_id": "E001",
+                        "source": {"path": source["path"], "sha256": source["sha256"]},
+                        "processing_step": "计算任务处理状态",
+                        "state_change": "将等待状态更新为完成状态",
+                        "technical_effect": "降低任务处理等待时延",
+                        "status": "code-supported",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
+def _complete_candidates(case: Path) -> None:
+    candidates = []
+    for index in range(1, 4):
+        candidates.append(
+            {
+                "candidate_id": f"P{index:03d}",
+                "title": f"候选技术方案{index}",
+                "technical_problem": "现有任务处理存在较高等待时延",
+                "mechanism": "依据任务状态执行反馈式资源分配",
+                "distinguishing_features": ["基于状态反馈动态调整资源"],
+                "technical_effects": ["降低任务排队等待时延"],
+                "evidence_ids": ["E001"],
+                "risk": "medium",
+            }
+        )
+    _write(
+        case / "02-invention-candidates.json",
+        json.dumps({"candidates": candidates}, ensure_ascii=False),
+    )
+
+
+def _complete_matrix(case: Path) -> None:
+    _write(
+        case / "04-feature-matrix.json",
+        json.dumps(
+            {
+                "features": [
+                    {
+                        "feature_id": "F001",
+                        "feature": "基于状态反馈动态调整资源",
+                        "engineering_evidence_ids": ["E001"],
+                        "references": {"CN123": "partial"},
+                        "distinguishing_effect": "降低任务排队等待时延",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
+def _complete_final_audit(case: Path) -> None:
+    review = {
+        "status": "PASS",
+        "conclusion": "现有材料支持该项审计结论",
+        "evidence_refs": ["I1-L1", "CN123"],
+        "residual_risk": "仍需代理师终审",
+        "recommended_action": "提交代理师复核",
+    }
+    audit = {
+        "novelty": {
+            "I1": {
+                **review,
+                "closest_reference_ids": ["CN123"],
+                "single_reference_full_disclosure": False,
+            }
+        },
+        "inventive_step": {
+            **review,
+            "closest_prior_art": ["CN123"],
+            "distinguishing_limitation_ids": ["I1-L1"],
+            "technical_effects": ["降低任务排队等待时延"],
+            "objective_technical_problem": "如何降低任务处理过程中的等待时延",
+            "combination_motivation": "现有文献未给出组合该反馈机制的技术启示",
+        },
+        "eligibility": dict(review),
+        "clarity_and_support": dict(review),
+        "enablement": dict(review),
+        "unity": dict(review),
+        "amendment_basis": dict(review),
+        "sensitive_information": dict(review),
+    }
+    _write(case / "13-final-audit.json", json.dumps(audit, ensure_ascii=False))
+
+
 def test_init_case_creates_only_snapshot_and_uses_clean_git_commit(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -178,30 +280,20 @@ def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditiona
 ) -> None:
     project = tmp_path / "project"
     project.mkdir()
+    _write(project / "core.py", "def mechanism():\n    return 1\n")
     case = tmp_path / "case"
     init_case_workspace(case, project)
 
     with pytest.raises(ValueError, match="Illegal stage transition"):
         advance_stage(case, "CLAIMS_V1")
     advance_stage(case, "EVIDENCE_MAP")
-    _write(
-        case / "01-code-evidence-map.md",
-        "| 编号 | 证据 | 步骤 | 状态变化 | 效果 | 状态 |\n"
-        "|---|---|---|---|---|---|\n"
-        "| E1 | core.py:1 | 处理 | A→B | 降低时延 | confirmed |\n",
-    )
+    _complete_evidence(case)
     advance_stage(case, "INVENTION_CANDIDATES")
-    _write(
-        case / "02-invention-candidates.md",
-        "| 候选 | 问题 | 机制 | 特征 | 效果 | 证据 | 风险 |\n|---|---|---|---|---|---|---|\n"
-        "| P1 | a | m | f | e | E1 | r |\n"
-        "| P2 | b | m | f | e | E1 | r |\n"
-        "| P3 | c | m | f | e | E1 | r |\n",
-    )
+    _complete_candidates(case)
     advance_stage(case, "FIRST_SEARCH")
     _write(
         case / "03-prior-art-search" / "search-records.jsonl",
-        "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")),
+        "".join(_search_record(candidate) for candidate in ("P001", "P002", "P003")),
     )
     advance_stage(case, "CANDIDATE_RANKING")
     ranking_path = case / "02-candidate-ranking.json"
@@ -209,10 +301,10 @@ def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditiona
     ranking.update(
         {
             "ranked_candidates": [
-                {"candidate_id": "P1", "score": 8},
-                {"candidate_id": "P2", "score": 7.9},
+                {"candidate_id": "P001", "score": 8},
+                {"candidate_id": "P002", "score": 7.9},
             ],
-            "selected_candidate_id": "P1",
+            "selected_candidate_id": "P001",
             "strategic_ambiguity": True,
             "human_confirmation_required": True,
             "selection_reason": "分值接近",
@@ -222,34 +314,32 @@ def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditiona
 
     with pytest.raises(ValueError, match="human_confirmation"):
         advance_stage(case, "FEATURE_MATRIX")
-    advance_stage(case, "FEATURE_MATRIX", confirmation="用户确认选择 P1")
+    advance_stage(case, "FEATURE_MATRIX", confirmation="用户确认选择 P001")
     assert json.loads(ranking_path.read_text(encoding="utf-8"))["human_confirmation"]
 
 
 def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
+    _write(project / "core.py", "def mechanism():\n    return 1\n")
     case = tmp_path / "case"
     init_case_workspace(case, project)
     advance_stage(case, "EVIDENCE_MAP")
-    _write(case / "01-code-evidence-map.md", "| a | b |\n|---|---|\n| E1 | code |\n")
+    _complete_evidence(case)
     advance_stage(case, "INVENTION_CANDIDATES")
-    _write(
-        case / "02-invention-candidates.md",
-        "| a | b |\n|---|---|\n| P1 | x |\n| P2 | y |\n| P3 | z |\n",
-    )
+    _complete_candidates(case)
     advance_stage(case, "FIRST_SEARCH")
     _write(
         case / "03-prior-art-search" / "search-records.jsonl",
-        "".join(_search_record(candidate) for candidate in ("P1", "P2", "P3")),
+        "".join(_search_record(candidate) for candidate in ("P001", "P002", "P003")),
     )
     advance_stage(case, "CANDIDATE_RANKING")
     _write(
         case / "02-candidate-ranking.json",
         json.dumps(
             {
-                "ranked_candidates": ["P1", "P2", "P3"],
-                "selected_candidate_id": "P1",
+                "ranked_candidates": ["P001", "P002", "P003"],
+                "selected_candidate_id": "P001",
                 "strategic_ambiguity": False,
                 "human_confirmation_required": False,
                 "human_confirmation": "",
@@ -258,7 +348,7 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
         ),
     )
     advance_stage(case, "FEATURE_MATRIX")
-    _write(case / "04-feature-matrix.md", "| a | b |\n|---|---|\n| F1 | E1 |\n")
+    _complete_matrix(case)
     advance_stage(case, "CLAIMS_V1")
     _write(case / "05-claims-v1.md", "# Claims V1\n\n1. 一种处理方法，包括步骤A。\n")
     advance_stage(case, "SPECIFICATION_V1")
@@ -305,28 +395,31 @@ def test_support_map_order_content_ready_and_docx_are_separate_gates(tmp_path: P
         advance_stage(case, "FINAL_AUDIT")
     _complete_application(case)
     advance_stage(case, "FINAL_AUDIT")
-    sections = (
-        "新颖性",
-        "创造性",
-        "专利客体",
-        "清楚性与支持性",
-        "充分公开",
-        "单一性与拆案",
-        "修改依据",
-        "敏感信息",
-    )
-    _write(
-        case / "13-final-audit.md",
-        "# 最终审计\n\n"
-        + "\n\n".join(f"## {section}\n\n已完成检查。" for section in sections)
-        + "\n",
-    )
+    _complete_final_audit(case)
 
-    with pytest.raises(ValueError, match="Technical content questions"):
+    questions_path = case / "context-questions.json"
+    questions = json.loads(questions_path.read_text(encoding="utf-8"))
+    questions["questions"].append(
+        {
+            "id": "Q003",
+            "category": "technical",
+            "question": "状态反馈是否发生在任务分配之前？",
+            "blocking": True,
+            "impact": "影响独立权利要求的步骤顺序",
+            "status": "open",
+            "resolution": None,
+            "evidence_refs": ["E001"],
+            "source": None,
+        }
+    )
+    _write(questions_path, json.dumps(questions, ensure_ascii=False))
+
+    with pytest.raises(ValueError, match="Unresolved blocking technical questions"):
         advance_stage(case, "CONTENT_READY_FOR_ATTORNEY_REVIEW")
-    advance_stage(case, "CONTENT_READY_FOR_ATTORNEY_REVIEW", close_technical_questions=True)
+    resolve_case_question(case, "Q003", "是，反馈先于分配执行", "developer-confirmed")
+    advance_stage(case, "CONTENT_READY_FOR_ATTORNEY_REVIEW")
     status = json.loads((case / "case-status.json").read_text(encoding="utf-8"))
-    assert status["filing_context_questions_open"] is True
+    assert "technical_questions_open" not in status
     assert not (case / "filing-package").exists()
 
     exported = export_case_package(case, tmp_path / "patent-output")
@@ -514,3 +607,42 @@ def test_revision_archives_downstream_and_reopens_target(tmp_path: Path) -> None
     assert (revision / "reason.json").exists()
     assert (case / "08-claims-v2.md").exists()
     assert not (case / "10-final-search").exists()
+
+
+def test_markdown_cannot_bypass_structured_evidence_gate(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    _write(project / "core.py", "value = 1\n")
+    case = tmp_path / "case"
+    init_case_workspace(case, project)
+    advance_stage(case, "EVIDENCE_MAP")
+    _write(case / "01-code-evidence-map.md", "| E001 | 看似完整但不是事实源 |\n")
+
+    with pytest.raises(ValueError, match="should be non-empty"):
+        advance_stage(case, "INVENTION_CANDIDATES")
+
+
+def test_final_audit_placeholder_cannot_pass_without_structured_analysis(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "08-claims-v2-structure.json",
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1"],
+                        "distinguishing_limitation_ids": ["I1-L1"],
+                    }
+                ]
+            }
+        ),
+    )
+    search = tmp_path / "10-final-search"
+    search.mkdir()
+    _write(search / "search-records.jsonl", _final_search_record())
+    _write(tmp_path / "13-final-audit.md", "# 最终审计\n\n## 新颖性\n\n已完成检查。\n")
+    _write(tmp_path / "13-final-audit.json", json.dumps({"novelty": {}}))
+
+    errors = _validate_final_audit(tmp_path, {})
+    assert any("required property" in error for error in errors)

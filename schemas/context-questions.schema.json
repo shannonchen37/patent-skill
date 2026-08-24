@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Case Context Questions",
+  "type": "object",
+  "required": ["questions"],
+  "properties": {"questions": {"type": "array", "items": {
+    "type": "object",
+    "required": ["id", "category", "question", "blocking", "impact", "status", "resolution", "evidence_refs", "source"],
+    "properties": {
+      "id": {"type": "string", "pattern": "^Q[0-9]{3,}$"},
+      "category": {"enum": ["technical", "filing_context"]},
+      "question": {"type": "string", "minLength": 4},
+      "blocking": {"type": "boolean"},
+      "impact": {"type": "string", "minLength": 2},
+      "status": {"enum": ["open", "resolved"]},
+      "resolution": {"type": ["string", "null"]},
+      "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+      "source": {"type": ["string", "null"]},
+      "resolved_at": {"type": "string", "format": "date-time"}
+    }, "additionalProperties": false
+  }}},
+  "additionalProperties": false
+}

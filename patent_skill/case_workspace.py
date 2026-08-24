@@ -9,7 +9,7 @@ import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
@@ -19,7 +19,8 @@ from .claims import (
     validate_abstract_cn,
     validate_claims_cn,
 )
-from .scanner import scan_repository
+from .scanner import scan_archive, scan_repository
+from .schema_validation import validate_schema
 
 
 class CaseStage(StrEnum):
@@ -90,28 +91,6 @@ STAGE_ARTIFACTS: dict[CaseStage, tuple[str, ...]] = {
     CaseStage.FINAL_AUDIT: ("13-final-audit.json", "13-final-audit.md"),
     CaseStage.INDEPENDENT_AUDIT: ("filing-package",),
 }
-
-CONTEXT_LEDGER = """# 上下文确认记录
-
-## 技术内容待确认问题
-
-| 优先级 | 当前证据 | 不确定内容 | 对保护范围的影响 | 状态 |
-|---|---|---|---|---|
-
-## 申请与法律背景待确认问题
-
-> 公开日期、贡献人和申请主体等信息可稍后补充；除非直接影响当前判断，否则不阻断技术内容工作。
-
-| 问题 | 当前状态 | 最晚确认阶段 |
-|---|---|---|
-| 公开历史 | 待确认 | 提交前 |
-| 核心技术贡献人 | 待确认 | 提交前 |
-
-## 已确认事实
-
-| 日期 | 事实 | 来源 | 影响文档 |
-|---|---|---|---|
-"""
 
 ARTIFACT_TEMPLATES = {
     CaseStage.EVIDENCE_MAP: (
@@ -245,7 +224,34 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
         "| 姓名 | 实质性技术贡献 | 证据 | 是否拟列发明人 |\n|---|---|---|---|\n",
         encoding="utf-8",
     )
-    (case_dir / "context-ledger.md").write_text(CONTEXT_LEDGER, encoding="utf-8")
+    questions = {
+        "questions": [
+            {
+                "id": "Q001",
+                "category": "filing_context",
+                "question": "项目的首次公开日期和公开范围是什么？",
+                "blocking": False,
+                "impact": "用于提交前的新颖性法律背景复核",
+                "status": "open",
+                "resolution": None,
+                "evidence_refs": [],
+                "source": None,
+            },
+            {
+                "id": "Q002",
+                "category": "filing_context",
+                "question": "哪些人员对核心技术方案作出实质性贡献？",
+                "blocking": False,
+                "impact": "用于提交前确认发明人",
+                "status": "open",
+                "resolution": None,
+                "evidence_refs": [],
+                "source": None,
+            },
+        ]
+    }
+    _write_json(case_dir / "context-questions.json", questions)
+    _render_context_questions(case_dir, questions)
 
     now = datetime.now(UTC).isoformat()
     status = {
@@ -254,8 +260,6 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
         "project_source": str(project),
         "proposed_title": title,
         "current_stage": CaseStage.PROJECT_SNAPSHOT.value,
-        "technical_questions_open": True,
-        "filing_context_questions_open": True,
         "revision": 0,
         "revision_history": [],
         "stage_history": [
@@ -280,7 +284,6 @@ def advance_stage(
     target_stage: str,
     *,
     confirmation: str = "",
-    close_technical_questions: bool = False,
 ) -> dict[str, Any]:
     case_dir = case_dir.resolve()
     status = _load_status(case_dir)
@@ -313,12 +316,10 @@ def advance_stage(
     errors = _validate_stage(case_dir, status, current)
     if errors:
         raise ValueError("Current stage gate failed: " + "; ".join(errors))
-    if close_technical_questions:
-        status["technical_questions_open"] = False
-    if target == CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW and status.get(
-        "technical_questions_open"
-    ):
-        raise ValueError("Technical content questions remain open")
+    if target == CaseStage.CONTENT_READY_FOR_ATTORNEY_REVIEW:
+        question_errors = _validate_content_ready(case_dir, status)
+        if question_errors:
+            raise ValueError("; ".join(question_errors))
     if target == CaseStage.DOCX_PACKAGE_RENDERED:
         docx_errors = _validate_docx_package(case_dir, status)
         if docx_errors:
@@ -336,6 +337,34 @@ def advance_stage(
     _prepare_stage_artifact(case_dir, target)
     _write_json(case_dir / "case-status.json", status)
     return status
+
+
+def resolve_case_question(
+    case_dir: Path, question_id: str, answer: str, source: str
+) -> dict[str, Any]:
+    case_dir = case_dir.resolve()
+    if not answer.strip() or not source.strip():
+        raise ValueError("Question resolution requires a non-empty answer and source")
+    path = case_dir / "context-questions.json"
+    questions = _load_json(path, "context questions")
+    matches = [item for item in questions.get("questions", []) if item.get("id") == question_id]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate context question: {question_id}")
+    question = matches[0]
+    question.update(
+        {
+            "status": "resolved",
+            "resolution": answer.strip(),
+            "source": source.strip(),
+            "resolved_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    errors = validate_schema(questions, "context-questions.schema.json")
+    if errors:
+        raise ValueError("Invalid context questions: " + "; ".join(errors))
+    _write_json(path, questions)
+    _render_context_questions(case_dir, questions)
+    return question
 
 
 def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[str, Any]:
@@ -422,6 +451,7 @@ def export_case_package(case_dir: Path, output_dir: Path) -> Path:
         "12-application/drawings-description.md",
         "12-application/application-metadata.json",
         "09-claim-support-map.md",
+        "13-final-audit.json",
         "13-final-audit.md",
     ):
         source = case_dir / relative
@@ -477,18 +507,11 @@ def validate_case_workspace(case_dir: Path) -> list[str]:
 def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) -> list[str]:
     validators: dict[CaseStage, Callable[[Path, dict[str, Any]], list[str]]] = {
         CaseStage.PROJECT_SNAPSHOT: _validate_snapshot,
-        CaseStage.EVIDENCE_MAP: lambda root, _: _validate_table(
-            root / "01-code-evidence-map.md", 1
-        ),
-        CaseStage.INVENTION_CANDIDATES: lambda root, _: _validate_table(
-            root / "02-invention-candidates.md", 3, 5
-        ),
-        CaseStage.FIRST_SEARCH: lambda root, _: _validate_search(
-            root / "03-prior-art-search",
-            {row[0] for row in _markdown_data_rows(root / "02-invention-candidates.md") if row},
-        ),
+        CaseStage.EVIDENCE_MAP: _validate_evidence_map,
+        CaseStage.INVENTION_CANDIDATES: _validate_invention_candidates,
+        CaseStage.FIRST_SEARCH: _validate_first_search,
         CaseStage.CANDIDATE_RANKING: _validate_ranking,
-        CaseStage.FEATURE_MATRIX: lambda root, _: _validate_table(root / "04-feature-matrix.md", 1),
+        CaseStage.FEATURE_MATRIX: _validate_feature_matrix,
         CaseStage.CLAIMS_V1: lambda root, _: _validate_claims_stage(root / "05-claims-v1.md"),
         CaseStage.SPECIFICATION_V1: lambda root, _: _validate_draft(
             root / "06-specification-v1.md"
@@ -512,12 +535,36 @@ def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) ->
 
 
 def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
-    if stage == CaseStage.FIRST_SEARCH:
+    if stage == CaseStage.EVIDENCE_MAP:
+        _write_json(case_dir / "01-code-evidence-map.json", {"evidence": []})
+        _render_evidence_map(case_dir, {"evidence": []})
+    elif stage == CaseStage.INVENTION_CANDIDATES:
+        _write_json(case_dir / "02-invention-candidates.json", {"candidates": []})
+        _render_invention_candidates(case_dir, {"candidates": []})
+    elif stage == CaseStage.FEATURE_MATRIX:
+        _write_json(case_dir / "04-feature-matrix.json", {"features": []})
+        _render_feature_matrix(case_dir, {"features": []})
+    elif stage == CaseStage.FIRST_SEARCH:
         _prepare_search_dir(case_dir / "03-prior-art-search")
     elif stage == CaseStage.FINAL_SEARCH:
         _prepare_search_dir(case_dir / "10-final-search")
     elif stage == CaseStage.APPLICATION_DRAFT:
         _prepare_application_draft(case_dir)
+    elif stage == CaseStage.FINAL_AUDIT:
+        _write_json(
+            case_dir / "13-final-audit.json",
+            {
+                "novelty": {},
+                "inventive_step": {},
+                "eligibility": {},
+                "clarity_and_support": {},
+                "enablement": {},
+                "unity": {},
+                "amendment_basis": {},
+                "sensitive_information": {},
+            },
+        )
+        _render_final_audit(case_dir, {})
     elif stage == CaseStage.INDEPENDENT_AUDIT:
         directory = case_dir / "filing-package" / "huang-audit"
         directory.mkdir(parents=True, exist_ok=True)
@@ -614,6 +661,86 @@ def _validate_snapshot(case_dir: Path, _: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_evidence_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    try:
+        evidence_map = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+        snapshot = _load_json(
+            case_dir / "00-project-snapshot" / "snapshot-manifest.json", "snapshot manifest"
+        )
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(evidence_map, "engineering-provenance.schema.json")
+    manifest = {item["path"]: item["sha256"] for item in snapshot.get("files", [])}
+    identifiers: list[str] = []
+    for item in evidence_map.get("evidence", []):
+        identifiers.append(item.get("evidence_id", ""))
+        source = item.get("source", {})
+        path = source.get("path")
+        if path not in manifest:
+            errors.append(f"Evidence {item.get('evidence_id')} references a file outside snapshot")
+        elif source.get("sha256") != manifest[path]:
+            errors.append(f"Evidence {item.get('evidence_id')} has a stale source hash")
+        if (
+            source.get("start_line")
+            and source.get("end_line")
+            and source["start_line"] > source["end_line"]
+        ):
+            errors.append(f"Evidence {item.get('evidence_id')} has an invalid line range")
+    if len(identifiers) != len(set(identifiers)):
+        errors.append("Evidence IDs must be unique")
+    if not errors:
+        _render_evidence_map(case_dir, evidence_map)
+    return errors
+
+
+def _validate_invention_candidates(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    try:
+        candidates = _load_json(case_dir / "02-invention-candidates.json", "invention candidates")
+        evidence = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(candidates, "invention.schema.json")
+    evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    candidate_ids: list[str] = []
+    for item in candidates.get("candidates", []):
+        candidate_ids.append(item.get("candidate_id", ""))
+        unknown = set(item.get("evidence_ids", [])) - evidence_ids
+        if unknown:
+            errors.append(
+                f"Candidate {item.get('candidate_id')} references unknown evidence: "
+                + ", ".join(sorted(unknown))
+            )
+    if len(candidate_ids) != len(set(candidate_ids)):
+        errors.append("Candidate IDs must be unique")
+    if not errors:
+        _render_invention_candidates(case_dir, candidates)
+    return errors
+
+
+def _validate_feature_matrix(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    try:
+        matrix = _load_json(case_dir / "04-feature-matrix.json", "feature matrix")
+        evidence = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(matrix, "case-feature-matrix.schema.json")
+    evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    feature_ids: list[str] = []
+    for item in matrix.get("features", []):
+        feature_ids.append(item.get("feature_id", ""))
+        unknown = set(item.get("engineering_evidence_ids", [])) - evidence_ids
+        if unknown:
+            errors.append(
+                f"Feature {item.get('feature_id')} references unknown evidence: "
+                + ", ".join(sorted(unknown))
+            )
+    if len(feature_ids) != len(set(feature_ids)):
+        errors.append("Feature IDs must be unique")
+    if not errors:
+        _render_feature_matrix(case_dir, matrix)
+    return errors
+
+
 def _validate_table(path: Path, minimum: int, maximum: int | None = None) -> list[str]:
     if not path.exists():
         return [f"Missing case artifact: {path.name}"]
@@ -636,6 +763,15 @@ def _validate_search(path: Path, required_candidate_ids: set[str] | None = None)
                 "First search does not cover candidates: " + ", ".join(missing_candidates)
             )
     return errors
+
+
+def _validate_first_search(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    try:
+        candidates = _load_json(case_dir / "02-invention-candidates.json", "invention candidates")
+    except ValueError as exc:
+        return [str(exc)]
+    required = {item.get("candidate_id", "") for item in candidates.get("candidates", [])}
+    return _validate_search(case_dir / "03-prior-art-search", required)
 
 
 def _read_search_records(
@@ -1000,6 +1136,7 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
         structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
     except ValueError as exc:
         return errors + [str(exc)]
+    errors.extend(validate_schema(metadata, "application-metadata.schema.json"))
     expected_hashes = {
         "source_claims_v2_sha256": _sha256_text(claims_v2),
         "claims_final_sha256": _sha256_text(claims_final),
@@ -1050,40 +1187,68 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
 
 
 def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
-    path = case_dir / "13-final-audit.md"
-    if not path.exists():
-        return ["Missing case artifact: 13-final-audit.md"]
-    text = path.read_text(encoding="utf-8")
-    required = (
-        "新颖性",
-        "创造性",
-        "专利客体",
-        "清楚性与支持性",
-        "充分公开",
-        "单一性与拆案",
-        "修改依据",
-        "敏感信息",
-    )
-    errors = []
-    for section in required:
-        heading = f"## {section}"
-        if heading not in text:
-            errors.append(f"Final audit missing section: {section}")
-            continue
-        body = text.split(heading, 1)[1].split("\n## ", 1)[0].strip()
-        if not body:
-            errors.append(f"Final audit section has no conclusion: {section}")
-    if "待复核" in text or "【待" in text:
-        errors.append("Final audit still contains pending conclusions")
+    try:
+        audit = _load_json(case_dir / "13-final-audit.json", "final audit")
+        structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(audit, "final-audit.schema.json")
+    claim_ids = {entry.get("claim_id") for entry in structure.get("independent_claims", [])}
+    limitation_ids = {
+        limitation
+        for entry in structure.get("independent_claims", [])
+        for limitation in entry.get("limitation_ids", [])
+    }
+    distinguishing_ids = {
+        limitation
+        for entry in structure.get("independent_claims", [])
+        for limitation in entry.get("distinguishing_limitation_ids", [])
+    }
+    novelty_ids = set(audit.get("novelty", {}))
+    if novelty_ids != claim_ids:
+        errors.append("Final audit novelty must cover exactly all independent claims")
+    inventive_ids = set(audit.get("inventive_step", {}).get("distinguishing_limitation_ids", []))
+    if not inventive_ids <= limitation_ids:
+        errors.append("Final audit inventive-step analysis references unknown limitations")
+    if not distinguishing_ids <= inventive_ids:
+        errors.append("Final audit inventive-step analysis omits distinguishing limitations")
+    reference_ids = _search_reference_ids(case_dir / "10-final-search")
+    cited = set(audit.get("inventive_step", {}).get("closest_prior_art", []))
+    for item in audit.get("novelty", {}).values():
+        cited.update(item.get("closest_reference_ids", []))
+    if cited - reference_ids:
+        errors.append("Final audit cites references absent from final-search records")
+    if not errors:
+        _render_final_audit(case_dir, audit)
     return errors
 
 
-def _validate_content_ready(_: Path, status: dict[str, Any]) -> list[str]:
-    return (
-        ["Technical content questions remain open"]
-        if status.get("technical_questions_open")
-        else []
-    )
+def _validate_content_ready(case_dir: Path, _: dict[str, Any]) -> list[str]:
+    try:
+        ledger = _load_json(case_dir / "context-questions.json", "context questions")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(ledger, "context-questions.schema.json")
+    identifiers = [item.get("id") for item in ledger.get("questions", [])]
+    if len(identifiers) != len(set(identifiers)):
+        errors.append("Context question IDs must be unique")
+    for item in ledger.get("questions", []):
+        if item.get("status") == "resolved" and (
+            not str(item.get("resolution") or "").strip()
+            or not str(item.get("source") or "").strip()
+            or not item.get("resolved_at")
+        ):
+            errors.append(f"Resolved context question {item.get('id')} lacks answer provenance")
+    unresolved = [
+        item.get("id", "unknown")
+        for item in ledger.get("questions", [])
+        if item.get("category") == "technical"
+        and item.get("blocking") is True
+        and item.get("status") != "resolved"
+    ]
+    if unresolved:
+        errors.append("Unresolved blocking technical questions: " + ", ".join(unresolved))
+    return errors
 
 
 def _validate_independent_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -1171,20 +1336,8 @@ def _create_snapshot(project: Path) -> dict[str, Any]:
 
 
 def _archive_snapshot(project: Path) -> dict[str, Any]:
-    files = []
-    with zipfile.ZipFile(project) as archive:
-        for info in sorted(archive.infolist(), key=lambda item: item.filename):
-            name = PurePosixPath(info.filename)
-            if info.is_dir() or name.is_absolute() or ".." in name.parts:
-                continue
-            content = archive.read(info)
-            files.append(
-                {
-                    "path": str(name),
-                    "size": info.file_size,
-                    "sha256": hashlib.sha256(content).hexdigest(),
-                }
-            )
+    scan = scan_archive(project)
+    files = scan["files"]
     archive_sha = hashlib.sha256(project.read_bytes()).hexdigest()
     return {
         "snapshot_type": "uploaded_archive",
@@ -1193,9 +1346,11 @@ def _archive_snapshot(project: Path) -> dict[str, Any]:
         "snapshot_sha256": archive_sha,
         "archive_sha256": archive_sha,
         "manifest_sha256": _manifest_digest(files),
-        "file_count": len(files),
-        "languages": {},
-        "security_warnings": [],
+        "file_count": scan["file_count"],
+        "languages": scan["languages"],
+        "security_warnings": scan["security_warnings"],
+        "excluded_files": scan["excluded_files"],
+        "limits": scan["limits"],
         "files": files,
     }
 
@@ -1244,6 +1399,208 @@ def _meaningful_markdown(text: str) -> list[str]:
         for line in text.splitlines()
         if line.strip() and not line.lstrip().startswith(("#", ">"))
     ]
+
+
+def _markdown_cell(value: Any) -> str:
+    if isinstance(value, list):
+        value = "；".join(str(item) for item in value)
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 技术证据地图",
+        "",
+        "> 本文件由 01-code-evidence-map.json 自动生成；请只编辑 JSON 事实源。",
+        "",
+        "| 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | 证据状态 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for item in data.get("evidence", []):
+        source = item.get("source", {})
+        location = source.get("path", "")
+        if source.get("symbol"):
+            location += f"::{source['symbol']}"
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("evidence_id", ""),
+                    location,
+                    item.get("processing_step", ""),
+                    item.get("state_change", ""),
+                    item.get("technical_effect", ""),
+                    item.get("status", ""),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "01-code-evidence-map.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_invention_candidates(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 候选发明",
+        "",
+        "> 本文件由 02-invention-candidates.json 自动生成；请只编辑 JSON 事实源。",
+        "",
+        "| 候选 | 名称 | 技术问题 | 核心机制 | 关键区别特征 | 技术效果 | 代码证据 | 风险 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for item in data.get("candidates", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("candidate_id", ""),
+                    item.get("title", ""),
+                    item.get("technical_problem", ""),
+                    item.get("mechanism", ""),
+                    item.get("distinguishing_features", []),
+                    item.get("technical_effects", []),
+                    item.get("evidence_ids", []),
+                    item.get("risk", ""),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "02-invention-candidates.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_feature_matrix(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 区别特征矩阵",
+        "",
+        "> 本文件由 04-feature-matrix.json 自动生成；请只编辑 JSON 事实源。",
+        "",
+        "| 特征编号 | 技术特征 | 工程证据 | 现有技术披露 | 区别与技术效果 |",
+        "|---|---|---|---|---|",
+    ]
+    for item in data.get("features", []):
+        references = "；".join(
+            f"{key}: {value}" for key, value in sorted(item.get("references", {}).items())
+        )
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("feature_id", ""),
+                    item.get("feature", ""),
+                    item.get("engineering_evidence_ids", []),
+                    references,
+                    item.get("distinguishing_effect", ""),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "04-feature-matrix.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_context_questions(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 上下文确认记录",
+        "",
+        "> 本文件由 context-questions.json 自动生成；问题是否阻断由结构化字段计算。",
+        "",
+        "| 编号 | 类别 | 问题 | 阻断 | 影响 | 状态 | 答案 | 来源 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for item in data.get("questions", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value or "")
+                for value in (
+                    item.get("id"),
+                    item.get("category"),
+                    item.get("question"),
+                    item.get("blocking"),
+                    item.get("impact"),
+                    item.get("status"),
+                    item.get("resolution"),
+                    item.get("source"),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "context-ledger.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _search_reference_ids(path: Path) -> set[str]:
+    _, records = _read_search_records(path, FINAL_SEARCH_FIELDS)
+    return {
+        str(reference)
+        for _, record in records
+        for reference in record.get("reviewed_reference_ids", [])
+    }
+
+
+def _render_final_audit(case_dir: Path, data: dict[str, Any]) -> None:
+    labels = {
+        "eligibility": "专利客体",
+        "clarity_and_support": "清楚性与支持性",
+        "enablement": "充分公开",
+        "unity": "单一性与拆案",
+        "amendment_basis": "修改依据",
+        "sensitive_information": "敏感信息",
+    }
+    lines = [
+        "# 最终审计",
+        "",
+        "> 本文件由 13-final-audit.json 自动生成；审计结论、依据、风险和行动均以 JSON 为准。",
+        "",
+        "## 新颖性",
+        "",
+    ]
+    for claim_id, item in sorted(data.get("novelty", {}).items()):
+        lines.extend(
+            [
+                f"### {claim_id} — {item.get('status', '')}",
+                "",
+                f"- 最接近文献：{_markdown_cell(item.get('closest_reference_ids', []))}",
+                f"- 单篇完整公开：{item.get('single_reference_full_disclosure', '')}",
+                f"- 结论：{item.get('conclusion', '')}",
+                f"- 依据：{_markdown_cell(item.get('evidence_refs', []))}",
+                f"- 剩余风险：{item.get('residual_risk', '')}",
+                f"- 建议处理：{item.get('recommended_action', '')}",
+                "",
+            ]
+        )
+    inventive = data.get("inventive_step", {})
+    lines.extend(
+        [
+            "## 创造性",
+            "",
+            f"- 状态：{inventive.get('status', '')}",
+            f"- 最接近现有技术：{_markdown_cell(inventive.get('closest_prior_art', []))}",
+            f"- 区别限定：{_markdown_cell(inventive.get('distinguishing_limitation_ids', []))}",
+            f"- 技术效果：{_markdown_cell(inventive.get('technical_effects', []))}",
+            f"- 客观技术问题：{inventive.get('objective_technical_problem', '')}",
+            f"- 组合动机：{inventive.get('combination_motivation', '')}",
+            f"- 结论：{inventive.get('conclusion', '')}",
+            f"- 剩余风险：{inventive.get('residual_risk', '')}",
+            f"- 建议处理：{inventive.get('recommended_action', '')}",
+            "",
+        ]
+    )
+    for key, heading in labels.items():
+        item = data.get(key, {})
+        lines.extend(
+            [
+                f"## {heading}",
+                "",
+                f"- 状态：{item.get('status', '')}",
+                f"- 结论：{item.get('conclusion', '')}",
+                f"- 依据：{_markdown_cell(item.get('evidence_refs', []))}",
+                f"- 剩余风险：{item.get('residual_risk', '')}",
+                f"- 建议处理：{item.get('recommended_action', '')}",
+                "",
+            ]
+        )
+    (case_dir / "13-final-audit.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def _markdown_data_rows(path: Path) -> list[list[str]]:

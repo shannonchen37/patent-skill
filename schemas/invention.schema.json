@@ -1,5 +1,21 @@
 {
-  "$schema":"https://json-schema.org/draft/2020-12/schema","title":"Invention Candidate","type":"object",
-  "required":["invention_id","title","features"],"properties":{"invention_id":{"type":"string","pattern":"^P[0-9]{3,}$"},
-  "title":{"type":"string"},"features":{"type":"array","items":{"type":"string","pattern":"^F[0-9]{3,}$"}},
-  "technical_solution_status":{"enum":["PASS","CONDITIONAL","NEEDS_REVIEW","FAIL_FOR_CURRENT_FORM"]}},"additionalProperties":true}
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Invention Candidates",
+  "type": "object",
+  "required": ["candidates"],
+  "properties": {"candidates": {"type": "array", "minItems": 3, "maxItems": 5, "items": {
+    "type": "object",
+    "required": ["candidate_id", "title", "technical_problem", "mechanism", "distinguishing_features", "technical_effects", "evidence_ids", "risk"],
+    "properties": {
+      "candidate_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
+      "title": {"type": "string", "minLength": 4},
+      "technical_problem": {"type": "string", "minLength": 8},
+      "mechanism": {"type": "string", "minLength": 8},
+      "distinguishing_features": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 4}},
+      "technical_effects": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 4}},
+      "evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+      "risk": {"enum": ["low", "medium", "high"]}
+    }, "additionalProperties": false
+  }}},
+  "additionalProperties": false
+}
