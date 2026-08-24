@@ -1,4 +1,4 @@
 interface:
   display_name: "Patent Skill"
   short_description: "Orchestrate an evidence-traceable Chinese patent case"
-  default_prompt: "Use $patent-skill as the canonical case orchestrator: freeze project evidence, ask focused technical questions, search and rank 3–5 candidates, validate Claims V1, structure and validate every Claims-V2 independent limitation, prove support and final-search coverage, then use optional yjmm10 for CNIPA evidence and Huang only for independent audit and validated DOCX output."
+  default_prompt: "Use $patent-skill as the canonical case orchestrator: securely freeze project evidence, maintain schema-validated JSON facts and sourced questions, search and rank 3–5 candidates, validate two claims rounds and exact support/search coverage, build the synchronized application package, perform structured final audit, then use yjmm10 only for optional CNIPA evidence and Huang only for independent audit and validated DOCX output."

@@ -79,7 +79,7 @@ Ask one content question before mining: `你是否已有拟申请的专利名称
 Make Shannon `patent-skill` the orchestrator and only canonical source of case facts. Create or resume one user-visible `patent-case/` directory before substantive analysis. For a new case, prefer:
 
 ```bash
-python -m patent_skill.cli init-case patent-case --project <project-path> --title "<optional-title>"
+python -m patent_skill.cli case init patent-case --project <project-path> --title "<optional-title>"
 ```
 
 Read [case-workspace.md](references/case-workspace.md) before creating or advancing a case. Do not scatter authoritative artifacts across chat attachments, temporary directories, or external Skill output folders.
@@ -104,12 +104,12 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 
 1. Complete project/title intake and initialize the canonical case.
 2. **Snapshot gate:** inspect code, docs, configuration, tests, benchmarks, issues/decisions, and necessary Git history. Record the accepted snapshot type and hashes without drafting. Detect and exclude secrets, customer data, production addresses, unrelated trade secrets, third-party source, dependencies, and build artifacts. Record project dates, disclosure history, and contributors as filing-context questions that may remain pending unless they change the current technical or novelty judgment.
-3. Build `01-code-evidence-map.md` as `code evidence -> processing step -> data/state change -> technical effect`. Reconstruct end-to-end runtime chains, not class/API inventories. Exclude ordinary UI, simple library calls, and known components without technical cooperation.
+3. Build canonical `01-code-evidence-map.json` as `code evidence -> processing step -> data/state change -> technical effect`; validate each source path/hash against the frozen snapshot and auto-render `01-code-evidence-map.md`. Never maintain Markdown as a second fact source. Reconstruct end-to-end runtime chains, not class/API inventories.
 4. **Evidence gate:** report proven, inferred, missing, and contradicted facts. Ask the highest-impact technical question and wait. Write no claims.
-5. Mine 3–5 candidates into `02-invention-candidates.md`. For each record technical problem, mechanism, distinguishing feature combination, effect, evidence, design-around exposure, support strength, and main weakness.
+5. Mine 3–5 candidates into canonical `02-invention-candidates.json`, cross-reference every evidence ID, and auto-render its Markdown view. For each record technical problem, mechanism, distinguishing feature combination, effect, evidence and main risk.
 6. Run the first prior-art search for all viable candidates before selecting the main invention. Search each problem, mechanism, feature combination, synonyms, broad/narrow expressions, and IPC/CPC. Write structured `search-records.jsonl` entries containing database, date, query, candidate ID, result count, reviewed references, verified URLs, and coverage limitations. Shannon owns the conclusions; yjmm10 is only an optional search adapter.
 7. Rank the candidates after search and record `02-candidate-ranking.json`. If one candidate is clearly superior, select it and continue without a ceremonial confirmation. If scores are close, several applications are justified, or the choice depends on business strategy, explain the alternatives and wait for explicit user confirmation. Check unity and propose separate applications where candidates lack one common special technical feature.
-8. Compare 3–10 closest references and create `04-feature-matrix.md`. Do not mosaic references for novelty. For inventive step, identify the closest reference, differences, actual problem, effect, and technical teaching.
+8. Compare 3–10 closest references in canonical `04-feature-matrix.json`, cross-reference engineering evidence, and auto-render its Markdown view. Do not mosaic references for novelty.
 9. **Overlap gate:** show the closest overlap and proposed code-supported distinction. Ask the user only about an implementation/effect that remains materially uncertain. If no defensible distinction remains, mark `HIGH_OVERLAP_RISK` and return to another candidate or stop.
 10. Draft `05-claims-v1.md`: method independent claim first, layered dependent fallbacks, then supported system/device/medium/program-product categories. Every limitation must trace to the evidence map. Before advancing, run the Chinese claim validator for consecutive numbering, backward-only dependency, alternative multiple dependency, prohibited multiple-to-multiple dependency, and terminal punctuation.
 11. **Claim-scope gate:** show the independent-claim feature chain in plain language and wait for approval.
@@ -117,8 +117,10 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 13. Build `07-support-candidates.md` as a pre-Claims-V2 pool of possible limitations, engineering sources, specification passages, effects, and risks. Draft `08-claims-v2.md` from that pool; narrow or remove unsupported limitations. Put every independent-claim limitation on its own line with a consecutive trace label such as `[I1-L1]`, and mirror the exact hierarchy in `08-claims-v2-structure.json`. Validate Claims V2 with the same Chinese claim rules as Claims V1. Remove trace labels only in rendered filing documents.
 14. After Claims V2 is fixed, build the definitive `09-claim-support-map.md`. Require exact equality among parsed independent-claim limitation labels, structured limitation IDs, and support-map rows. Each row must map exactly one limitation to engineering provenance, explicit specification support, and a technical effect, with no duplicate, unknown, `unsupported`, or unresolved status.
 15. Run the second feature-level search against Claims V2 under `10-final-search/`, again using Shannon analysis plus optional yjmm10 CNIPA results. For each record add `claim_id`, `limitation_ids`, and `search_scope`. Require at least one full-combination query for every independent claim and query coverage for every distinguishing limitation. Recheck novelty, inventive step, conflicting applications, eligibility, support, enablement, unity, fallbacks, and amendment basis.
-16. Write Shannon's canonical `11-final-audit.md`. When all technical questions are closed, mark only `CONTENT_READY_FOR_ATTORNEY_REVIEW`; filing-context questions may remain pending.
-17. Hand read-only copies to Huang `cn-patent-drafting` for `INDEPENDENT_AUDIT`. Huang must not select a new invention, rewrite canonical facts, or silently change claims. Reconcile every substantive finding in Shannon, then render the separate DOCX package. Mark `DOCX_PACKAGE_RENDERED` only after every required file is a nontrivial OOXML ZIP containing `[Content_Types].xml`, a valid nonempty `word/document.xml`, and a distinct required document subject. A Chinese patent attorney still performs the filing review.
+16. Enter `APPLICATION_DRAFT`. Generate `12-application/claims-final.md` exactly from Claims V2 by removing internal trace labels; then synchronize every limitation into the final specification, abstract, and drawings description. Record hashes and per-limitation terminology, protected-subject, embodiment, effect, and drawing checks in `application-metadata.json`.
+17. Write canonical `13-final-audit.json` and auto-render `13-final-audit.md`. Cover novelty for every independent claim; cover all distinguishing limitations in inventive-step analysis; record verified references, evidence, conclusion, residual risk, and recommended action for every audit topic. Placeholder prose cannot pass.
+18. Compute readiness directly from `context-questions.json`. Any unresolved blocking technical question prevents `CONTENT_READY_FOR_ATTORNEY_REVIEW`; resolve it only with an answer and provenance through `case resolve-question`. Filing-context questions may remain pending.
+19. Hand read-only copies to Huang `cn-patent-drafting` for `INDEPENDENT_AUDIT`. Huang must not select a new invention, rewrite canonical facts, or silently change claims. Reconcile every substantive finding in Shannon, then render the separate DOCX package. A Chinese patent attorney still performs the filing review.
 
 ## User experience and internal stages
 
@@ -142,15 +144,19 @@ Create and maintain:
 ```text
 patent-case/
 ├── case-status.json
+├── context-questions.json
 ├── context-ledger.md
 ├── 00-project-snapshot/
+├── 01-code-evidence-map.json
 ├── 01-code-evidence-map.md
+├── 02-invention-candidates.json
 ├── 02-invention-candidates.md
 ├── 02-candidate-ranking.json
 ├── 03-prior-art-search/
 │   ├── shannon/
 │   ├── yjmm10/
 │   └── search-records.jsonl
+├── 04-feature-matrix.json
 ├── 04-feature-matrix.md
 ├── 05-claims-v1.md
 ├── 06-specification-v1.md
@@ -162,13 +168,16 @@ patent-case/
 │   ├── shannon/
 │   ├── yjmm10/
 │   └── search-records.jsonl
-├── 11-final-audit.md
+├── 12-application/
+├── 13-final-audit.json
+├── 13-final-audit.md
+├── revisions/
 └── filing-package/
     ├── huang-audit/
     └── docx/
 ```
 
-Keep `case-status.json`, the context ledger, and canonical numbered artifacts under Shannon control. Use `python -m patent_skill.cli advance-stage ...` so validators enforce the ordered stage history; do not edit the current stage by hand. Never call the package filing-ready. Missing applicant/address/form data may remain placeholders; unresolved technical or support facts must respect the content gates.
+Keep `case-status.json`, `context-questions.json`, and canonical numbered JSON artifacts under Shannon control. Use `python -m patent_skill.cli case advance ...`; use `case revise` for substantive backward work so downstream artifacts are archived and invalidated. Do not edit the current stage by hand. Never call the package filing-ready.
 
 ## Reference routing
 

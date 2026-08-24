@@ -28,14 +28,15 @@ Never copy an external search conclusion into the feature matrix without Shannon
 
 Repository: `https://github.com/HuangXinzhe/cn-patent-drafting`
 
-Invoke only after `08-claims-v2.md`, `06-specification-v1.md`, `09-claim-support-map.md`, `10-final-search/`, and `11-final-audit.md` are stable and Shannon has reached `CONTENT_READY_FOR_ATTORNEY_REVIEW`. Provide read-only copies of:
+Invoke only after `12-application/`, `09-claim-support-map.md`, `10-final-search/`, and `13-final-audit.json` are validated and Shannon has reached `CONTENT_READY_FOR_ATTORNEY_REVIEW`. Provide read-only copies of:
 
 - evidence map;
 - confirmed candidate and feature matrix;
 - prior-art reports;
-- Claims V2;
+- final claims generated from Claims V2;
 - Claims V2 independent-claim structure;
-- specification, abstract and drawing source;
+- final specification, abstract and drawing description;
+- application synchronization metadata;
 - claim-support map;
 - unresolved-item list.
 

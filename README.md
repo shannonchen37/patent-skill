@@ -28,6 +28,8 @@ Skill 不会收到代码后立即端到端生成专利。代码不能代替完�
 → 说明书 V1 → support-candidates → Claims V2 + 独权限定结构
 → claim-support-map 与独权限定逐项一致
 → 每项独权组合及关键区别限定的第二次检索和模拟审查
+→ 从 Claims V2 确定性生成最终权利要求，并同步最终说明书、摘要与附图说明
+→ 结构化最终审计（逐项记录依据、剩余风险和处理意见）
 → 内容达到 CONTENT_READY_FOR_ATTORNEY_REVIEW
 → Huang 独立审稿 → Shannon 逐项协调 → 经 OOXML 有效性检查的成套 DOCX
 → 中国专利代理师终审
@@ -88,12 +90,16 @@ git -C ~/.codex/skills/patent-skill pull
 ```text
 patent-case/
 ├── case-status.json
+├── context-questions.json
 ├── context-ledger.md
 ├── 00-project-snapshot/
+├── 01-code-evidence-map.json
 ├── 01-code-evidence-map.md
+├── 02-invention-candidates.json
 ├── 02-invention-candidates.md
 ├── 02-candidate-ranking.json
 ├── 03-prior-art-search/{shannon,yjmm10}/
+├── 04-feature-matrix.json
 ├── 04-feature-matrix.md
 ├── 05-claims-v1.md
 ├── 06-specification-v1.md
@@ -102,14 +108,18 @@ patent-case/
 ├── 08-claims-v2-structure.json
 ├── 09-claim-support-map.md
 ├── 10-final-search/{shannon,yjmm10}/
-├── 11-final-audit.md
+├── 12-application/{claims-final,specification-final,abstract,drawings-description}.md
+├── 12-application/application-metadata.json
+├── 13-final-audit.json
+├── 13-final-audit.md
+├── revisions/R001/
 └── filing-package/{huang-audit,docx}/
 ```
 
 初始化案件目录：
 
 ```bash
-python -m patent_skill.cli init-case patent-case \
+python -m patent_skill.cli case init patent-case \
   --project /absolute/path/to/project \
   --title "可选的拟申请名称"
 ```
@@ -117,11 +127,31 @@ python -m patent_skill.cli init-case patent-case \
 `--project` 可指向 Git/普通目录或 ZIP。初始化只记录快照类型、整体摘要、逐文件 SHA-256、可用的 Git 状态和安全警告，不复制源代码，也不会自动创建 commit/tag。后续阶段只能依次推进：
 
 ```bash
-python -m patent_skill.cli advance-stage patent-case EVIDENCE_MAP
-python -m patent_skill.cli validate-case patent-case
+python -m patent_skill.cli case advance patent-case EVIDENCE_MAP
+python -m patent_skill.cli case validate patent-case
 ```
 
-阶段推进会验证当前产物，不允许手工跳过权利要求结构检查、查新、支持性映射或审计。Claims V2 的每个独权限定必须单独标记并同时出现在结构文件、支持映射和检索覆盖中。DOCX 必须是真实、非空的 OOXML 文件。技术内容问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们已直接影响当前的新颖性或权属判断。
+需要修订时使用正式回退，旧产物会归档且下游失效：
+
+```bash
+python -m patent_skill.cli case revise patent-case CLAIMS_V2 \
+  --reason "第二次检索发现新的重合文献"
+```
+
+技术问题只能携带答案来源逐项解决，不能用布尔开关跳过：
+
+```bash
+python -m patent_skill.cli case resolve-question patent-case Q003 \
+  --answer "反馈发生在任务分配前" --source developer-confirmed
+```
+
+内容完成后导出代理师复核包：
+
+```bash
+python -m patent_skill.cli case export patent-case --output attorney-review-package
+```
+
+代码证据、候选发明、区别特征矩阵和最终审计均以 JSON 为唯一事实源，Markdown 由校验通过的 JSON 自动生成。阶段推进不允许手工跳过权利要求结构、查新、支持映射、申请文本同步或审计。Claims V2 的每个独权限定必须同时出现在结构文件、支持映射、最终检索和申请同步记录中。DOCX 必须是真实、非空的 OOXML 文件。未解决的阻断性技术问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们直接影响当前判断。
 
 输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
 
