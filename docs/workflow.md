@@ -11,10 +11,10 @@ The canonical workflow is defined in `SKILL.md`. Key invariants:
 7. A renamed title never cures technical overlap; compare claims and technical solutions.
 8. Multiple references are not mosaiced to reject novelty.
 9. Validate Claims V1 and Claims V2 with the Chinese claim validator. Claims V1 drive the specification; a support-candidate pool precedes Claims V2.
-10. Mirror every independent Claims-V2 limitation in `08-claims-v2-structure.json`; require exact equality with the definitive support-map rows.
-11. Require a Claims-V2 combination search for every independent claim and coverage for every distinguishing limitation.
-12. Build a synchronized final application draft after the second search: deterministic final claims, final specification, abstract, drawings description, hashes, and per-limitation sync records.
-13. Require structured final-audit conclusions with evidence, residual risk, and recommended action; prose placeholders cannot pass.
+10. Trace independent limitations and dependent added limitations in the Claims-V2 structure and canonical support map.
+11. Bind the final-search session to Claims V2 hashes; require independent combination and distinguishing-feature coverage.
+12. Build a clean filing rendering, synchronized final specification/abstract, and conditional evidence-bound figures.
+13. Bind structured final and independent audits to immutable source hashes; reconcile every independent finding before DOCX.
 14. Shannon is the only canonical writer. yjmm10 supplies optional CNIPA search evidence; Huang supplies final independent audit and DOCX only.
 15. Applicant and inventor form data are deferred placeholders, not early content-generation gates.
 16. The software never promises zero collision or emits `FILING_READY`.

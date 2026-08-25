@@ -1,6 +1,6 @@
 # Architecture
 
-`SKILL.md` orchestrates judgment-heavy work and routes to focused references. The `patent_skill` package provides secure directory/ZIP evidence snapshots, sequential advance plus audited revision, JSON Schema gates, structured questions, Chinese claim validation, independent-claim limitation checks, final-search coverage, synchronized application construction, structured final audit, export, and OOXML validation.
+`SKILL.md` orchestrates judgment-heavy work and routes to focused references. The package provides secure snapshots, sequential advance plus audited revision, JSON Schema gates, independent/dependent limitation support, clean filing rendering, Claims-bound search, conditional evidence-bound figures, hash-bound final/independent audits, export, and OOXML validation.
 
 The four mapping types are deliberately separate. Claim and search analyses carry snapshot identifiers and hashes so a final review can detect stale conclusions.
 

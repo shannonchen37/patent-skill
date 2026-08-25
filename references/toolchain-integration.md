@@ -28,7 +28,7 @@ Never copy an external search conclusion into the feature matrix without Shannon
 
 Repository: `https://github.com/HuangXinzhe/cn-patent-drafting`
 
-Invoke only after `12-application/`, `09-claim-support-map.md`, `10-final-search/`, and `13-final-audit.json` are validated and Shannon has reached `CONTENT_READY_FOR_ATTORNEY_REVIEW`. Provide read-only copies of:
+Invoke only after `12-application/`, `09-claim-support-map.json`, `10-final-search/`, and `13-final-audit.json` are validated and Shannon has reached `CONTENT_READY_FOR_ATTORNEY_REVIEW`. Provide read-only copies of:
 
 - evidence map;
 - confirmed candidate and feature matrix;
@@ -46,7 +46,7 @@ Use this handoff instruction:
 Treat Shannon patent-skill as the canonical case source. Do not reselect the invention, add unsupported technical facts, or overwrite canonical Markdown. Independently audit claim support, antecedent basis, terminology, formulas/parameters, drawing references, enablement and scope. Write findings under filing-package/huang-audit/. Generate separate DOCX files under filing-package/docx/ only from the reconciled canonical text. Mark every proposed substantive change for Shannon reconciliation.
 ```
 
-Huang findings are recommendations, not facts. Shannon accepts, rejects, or asks the user about each substantive finding, updates the audit trail, and regenerates DOCX only after reconciliation. Before entering `DOCX_PACKAGE_RENDERED`, Shannon independently validates every required file as a distinct, nonempty OOXML document; filename presence alone is insufficient.
+Huang findings are recommendations, not facts. Record each in canonical `independent-audit.json`. A blocking finding must reference a known Shannon revision; rejected or no-change findings require reasons; attorney-review risks remain explicit. The audit is hash-bound to the reviewed application and final audit. Before `DOCX_PACKAGE_RENDERED`, validate the conditional required-subject list and each nonempty OOXML document.
 
 ## Installation boundary
 

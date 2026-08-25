@@ -26,12 +26,12 @@ Skill 不会收到代码后立即端到端生成专利。代码不能代替完�
 → 展示最接近现有技术和拟采用的区别特征，由用户确认
 → Claims V1 → 中国权利要求结构校验 → 用户确认独权技术链
 → 说明书 V1 → support-candidates → Claims V2 + 独权限定结构
-→ claim-support-map 与独权限定逐项一致
-→ 每项独权组合及关键区别限定的第二次检索和模拟审查
-→ 从 Claims V2 确定性生成最终权利要求，并同步最终说明书、摘要与附图说明
+→ claim-support-map 覆盖独权限定和从权新增限定
+→ 每项独权组合及关键区别限定的第二次检索，并绑定 Claims V2 哈希
+→ 从正式权利要求块生成干净权利要求书，同步最终说明书、摘要及条件附图
 → 结构化最终审计（逐项记录依据、剩余风险和处理意见）
 → 内容达到 CONTENT_READY_FOR_ATTORNEY_REVIEW
-→ Huang 独立审稿 → Shannon 逐项协调 → 经 OOXML 有效性检查的成套 DOCX
+→ Huang 结构化独立审稿 → Shannon 逐 finding 协调或正式修订 → 成套 DOCX
 → 中国专利代理师终审
 ```
 
@@ -106,14 +106,17 @@ patent-case/
 ├── 07-support-candidates.md
 ├── 08-claims-v2.md
 ├── 08-claims-v2-structure.json
+├── 09-claim-support-map.json
 ├── 09-claim-support-map.md
-├── 10-final-search/{shannon,yjmm10}/
+├── 10-final-search/{search-session.json,search-records.jsonl,shannon,yjmm10}/
 ├── 12-application/{claims-final,specification-final,abstract,drawings-description}.md
 ├── 12-application/application-metadata.json
+├── 12-application/figures.json
+├── 12-application/figures/（仅有图案件）
 ├── 13-final-audit.json
 ├── 13-final-audit.md
 ├── revisions/R001/
-└── filing-package/{huang-audit,docx}/
+└── filing-package/{huang-audit/independent-audit.json,docx}/
 ```
 
 初始化案件目录：
@@ -151,7 +154,7 @@ python -m patent_skill.cli case resolve-question patent-case Q003 \
 python -m patent_skill.cli case export patent-case --output attorney-review-package
 ```
 
-代码证据、候选发明、区别特征矩阵和最终审计均以 JSON 为唯一事实源，Markdown 由校验通过的 JSON 自动生成。阶段推进不允许手工跳过权利要求结构、查新、支持映射、申请文本同步或审计。Claims V2 的每个独权限定必须同时出现在结构文件、支持映射、最终检索和申请同步记录中。DOCX 必须是真实、非空的 OOXML 文件。未解决的阻断性技术问题会阻断内容完成；公开日期、贡献人、申请主体等申请背景可稍后补充，除非它们直接影响当前判断。
+结构化产物以 JSON 为唯一事实源，Markdown 自动生成。最终权利要求书只保留正式编号权利要求，不包含标题注释、内部追踪标签或待办标记。独权限定必须进入支持、申请同步和最终检索；从权新增限定必须进入支持与申请同步。附图由案件明确决定：无图案件不强制说明书附图/摘要附图；有图案件的节点、限定、工程证据和文件哈希必须可追踪。Final Search、Final Audit 和 Independent Audit 均绑定所审版本的哈希，旧分析不能静默复用。
 
 输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
 

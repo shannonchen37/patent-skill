@@ -114,13 +114,13 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 10. Draft `05-claims-v1.md`: method independent claim first, layered dependent fallbacks, then supported system/device/medium/program-product categories. Every limitation must trace to the evidence map. Before advancing, run the Chinese claim validator for consecutive numbering, backward-only dependency, alternative multiple dependency, prohibited multiple-to-multiple dependency, and terminal punctuation.
 11. **Claim-scope gate:** show the independent-claim feature chain in plain language and wait for approval.
 12. Draft `06-specification-v1.md` around Claims V1, including alternatives, parameter ranges, data structures, module interaction, failure paths, deployment variants, and AI model input/output/training details where necessary. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md), [claim-drafting-cn.md](references/claim-drafting-cn.md), and [specification-cn.md](references/specification-cn.md).
-13. Build `07-support-candidates.md` as a pre-Claims-V2 pool of possible limitations, engineering sources, specification passages, effects, and risks. Draft `08-claims-v2.md` from that pool; narrow or remove unsupported limitations. Put every independent-claim limitation on its own line with a consecutive trace label such as `[I1-L1]`, and mirror the exact hierarchy in `08-claims-v2-structure.json`. Validate Claims V2 with the same Chinese claim rules as Claims V1. Remove trace labels only in rendered filing documents.
-14. After Claims V2 is fixed, build the definitive `09-claim-support-map.md`. Require exact equality among parsed independent-claim limitation labels, structured limitation IDs, and support-map rows. Each row must map exactly one limitation to engineering provenance, explicit specification support, and a technical effect, with no duplicate, unknown, `unsupported`, or unresolved status.
-15. Run the second feature-level search against Claims V2 under `10-final-search/`, again using Shannon analysis plus optional yjmm10 CNIPA results. For each record add `claim_id`, `limitation_ids`, and `search_scope`. Require at least one full-combination query for every independent claim and query coverage for every distinguishing limitation. Recheck novelty, inventive step, conflicting applications, eligibility, support, enablement, unity, fallbacks, and amendment basis.
-16. Enter `APPLICATION_DRAFT`. Generate `12-application/claims-final.md` exactly from Claims V2 by removing internal trace labels; then synchronize every limitation into the final specification, abstract, and drawings description. Record hashes and per-limitation terminology, protected-subject, embodiment, effect, and drawing checks in `application-metadata.json`.
-17. Write canonical `13-final-audit.json` and auto-render `13-final-audit.md`. Cover novelty for every independent claim; cover all distinguishing limitations in inventive-step analysis; record verified references, evidence, conclusion, residual risk, and recommended action for every audit topic. Placeholder prose cannot pass.
+13. Build `07-support-candidates.md`, then draft Claims V2. Label every independent limitation `[I<n>-L<n>]` and every dependent claim's added limitation `[D<n>-L<n>]`; mirror claims, dependencies, added limitations, and fallback priority in `08-claims-v2-structure.json`. Internal Markdown may precede claims but must never appear after formal claims begin.
+14. Build canonical `09-claim-support-map.json` and its generated Markdown view. Require exact coverage of every independent limitation and dependent added limitation, with engineering evidence, explicit specification support, technical effect, and supported status.
+15. Run the second feature-level search under `10-final-search/`. Bind `search-session.json` to the current revision and exact Claims V2/structure hashes. Schema-validate each record. Require a full-combination query for every independent claim and coverage for every distinguishing independent limitation; high-priority dependent fallbacks may be searched additionally.
+16. Enter `APPLICATION_DRAFT`. Render `claims-final.md` from numbered claim blocks, removing all internal metadata and trace labels. Synchronize every independent and dependent limitation. Explicitly decide whether drawings are necessary. For a drawings case, maintain evidence-bound `figures.json` and hashed figure files; for a no-drawings case, keep the manifest empty and do not require drawing DOCX files.
+17. Write canonical `13-final-audit.json`, binding it to the exact application revision and hashes. Cover novelty for every independent claim and every distinguishing limitation in inventive-step analysis; record evidence, conclusion, residual risk, and action.
 18. Compute readiness directly from `context-questions.json`. Any unresolved blocking technical question prevents `CONTENT_READY_FOR_ATTORNEY_REVIEW`; resolve it only with an answer and provenance through `case resolve-question`. Filing-context questions may remain pending.
-19. Hand read-only copies to Huang `cn-patent-drafting` for `INDEPENDENT_AUDIT`. Huang must not select a new invention, rewrite canonical facts, or silently change claims. Reconcile every substantive finding in Shannon, then render the separate DOCX package. A Chinese patent attorney still performs the filing review.
+19. Hand read-only copies to Huang for `INDEPENDENT_AUDIT`. Record findings canonically in `independent-audit.json`, bound to the application and final-audit hashes. A blocking finding requires a known formal revision; rejected/no-change findings require reasons; attorney-only risks remain explicit. Only a reconciled audit permits DOCX rendering.
 
 ## User experience and internal stages
 
@@ -163,6 +163,7 @@ patent-case/
 ├── 07-support-candidates.md
 ├── 08-claims-v2.md
 ├── 08-claims-v2-structure.json
+├── 09-claim-support-map.json
 ├── 09-claim-support-map.md
 ├── 10-final-search/
 │   ├── shannon/
@@ -173,7 +174,7 @@ patent-case/
 ├── 13-final-audit.md
 ├── revisions/
 └── filing-package/
-    ├── huang-audit/
+    ├── huang-audit/independent-audit.json
     └── docx/
 ```
 

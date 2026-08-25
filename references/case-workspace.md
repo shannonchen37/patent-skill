@@ -32,11 +32,11 @@ The enforced sequence is:
 
 `EVIDENCE_MAP`, `INVENTION_CANDIDATES`, and `FEATURE_MATRIX` validate their canonical JSON against schemas, require unique IDs and valid cross-references, and regenerate Markdown. Two-line placeholder tables cannot pass.
 
-`CLAIMS_V2` requires both `08-claims-v2.md` and `08-claims-v2-structure.json`. Put the preamble of each independent claim on its own colon-terminated line, then put exactly one consecutive `[I<n>-L<n>]` limitation on each following substantive line. The structure file must identify every independent claim, all limitation IDs, and the nonempty subset of distinguishing limitation IDs.
+`CLAIMS_V2` requires both files. Independents use consecutive `[I<n>-L<n>]`; each dependent claim uses consecutive `[D<n>-L<n>]` for newly added limitations. The structure records dependencies and fallback priority. Markdown metadata is forbidden after formal claims begin.
 
-`CLAIM_SUPPORT_MAP` requires exactly one supported row per structured limitation. `FINAL_SEARCH` requires `claim_id`, `limitation_ids`, and `search_scope` in every search record, one `claim_combination` record covering the full limitation set of each independent claim, and coverage of every distinguishing limitation.
+`CLAIM_SUPPORT_MAP` uses canonical JSON and requires exactly one supported record for every independent and dependent limitation. `FINAL_SEARCH` binds its session to Claims V2 hashes and requires structured combination/distinguishing coverage for independent claims.
 
-`APPLICATION_DRAFT` requires label-stripped Claims V2, substantive final specification/abstract/drawings, exact file hashes, and one complete synchronization record for every independent-claim limitation. `FINAL_AUDIT` requires structured novelty analysis for every independent claim and evidence/risk/action fields for every review topic.
+`APPLICATION_DRAFT` requires a clean filing rendering, substantive final specification/abstract, conditional evidence-bound figures, exact hashes, and synchronization for every limitation. `FINAL_AUDIT` binds to those hashes. `INDEPENDENT_AUDIT` binds to both application and final audit and requires every finding to be reconciled.
 
 `DOCX_PACKAGE_RENDERED` requires a distinct DOCX for every required subject. Each file must exceed the minimum size threshold, be a readable OOXML ZIP, contain `[Content_Types].xml` and valid `word/document.xml`, and include nonempty document text.
 
