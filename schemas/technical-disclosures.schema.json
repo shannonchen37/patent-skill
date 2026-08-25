@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Confirmed Technical Disclosures",
+  "type": "object",
+  "required": ["case_revision", "disclosures"],
+  "properties": {
+    "case_revision": {"type": "integer", "minimum": 0},
+    "disclosures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "disclosure_id", "question_id", "statement", "source_role",
+          "implementation_status", "mechanism", "technical_effect",
+          "enablement", "confirmed_via", "confirmed_at", "lifecycle_status"
+        ],
+        "properties": {
+          "disclosure_id": {"type": "string", "pattern": "^TD[0-9]{3,}$"},
+          "question_id": {"type": "string", "pattern": "^Q[0-9]{3,}$"},
+          "statement": {"type": "string", "minLength": 8},
+          "source_role": {"enum": ["inventor", "developer"]},
+          "implementation_status": {
+            "enum": ["implemented_elsewhere", "partially_implemented", "designed_not_implemented"]
+          },
+          "mechanism": {
+            "type": "object",
+            "required": ["input", "processing", "state_change", "output", "integration"],
+            "properties": {
+              "input": {"type": "string", "minLength": 2},
+              "processing": {
+                "type": "array", "minItems": 1,
+                "items": {"type": "string", "minLength": 2}
+              },
+              "state_change": {"type": "string", "minLength": 4},
+              "output": {"type": "string", "minLength": 2},
+              "integration": {"type": "string", "minLength": 4},
+              "conflict_and_exception_handling": {"type": "string", "minLength": 4}
+            },
+            "additionalProperties": false
+          },
+          "technical_effect": {
+            "type": "object",
+            "required": ["statement", "effect_basis", "evidence_refs"],
+            "properties": {
+              "statement": {"type": "string", "minLength": 4},
+              "effect_basis": {"enum": ["measured", "observed", "mechanism-derived"]},
+              "evidence_refs": {
+                "type": "array", "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"effect_basis": {"const": "measured"}}},
+                "then": {"properties": {"evidence_refs": {"minItems": 1}}}
+              }
+            ],
+            "additionalProperties": false
+          },
+          "enablement": {
+            "type": "object",
+            "required": ["status", "missing_details"],
+            "properties": {
+              "status": {"enum": ["sufficient", "incomplete"]},
+              "missing_details": {
+                "type": "array", "uniqueItems": true,
+                "items": {"type": "string", "minLength": 2}
+              }
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"status": {"const": "sufficient"}}},
+                "then": {"properties": {"missing_details": {"maxItems": 0}}}
+              },
+              {
+                "if": {"properties": {"status": {"const": "incomplete"}}},
+                "then": {"properties": {"missing_details": {"minItems": 1}}}
+              }
+            ],
+            "additionalProperties": false
+          },
+          "confirmed_via": {"enum": ["user_response", "signed_disclosure", "meeting_record"]},
+          "confirmed_at": {"type": "string", "format": "date-time"},
+          "lifecycle_status": {"enum": ["active", "superseded"]},
+          "superseded_by": {"type": ["string", "null"], "pattern": "^TD[0-9]{3,}$"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

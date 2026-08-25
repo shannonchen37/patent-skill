@@ -5,7 +5,7 @@
   "required": ["candidates"],
   "properties": {"candidates": {"type": "array", "minItems": 3, "maxItems": 5, "items": {
     "type": "object",
-    "required": ["candidate_id", "title", "technical_problem", "mechanism", "distinguishing_features", "technical_effects", "evidence_ids", "risk"],
+    "required": ["candidate_id", "title", "technical_problem", "mechanism", "distinguishing_features", "technical_effects", "effect_basis", "engineering_evidence_ids", "technical_disclosure_ids", "risk"],
     "properties": {
       "candidate_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
       "title": {"type": "string", "minLength": 4},
@@ -13,7 +13,9 @@
       "mechanism": {"type": "string", "minLength": 8},
       "distinguishing_features": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 4}},
       "technical_effects": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 4}},
-      "evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+      "effect_basis": {"enum": ["measured", "observed", "mechanism-derived"]},
+      "engineering_evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+      "technical_disclosure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}},
       "risk": {"enum": ["low", "medium", "high"]}
     }, "additionalProperties": false
   }}},

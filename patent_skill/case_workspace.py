@@ -75,7 +75,12 @@ BASE_REQUIRED_DOCX_SUBJECTS = (
 )
 
 STAGE_ARTIFACTS: dict[CaseStage, tuple[str, ...]] = {
-    CaseStage.EVIDENCE_MAP: ("01-code-evidence-map.json", "01-code-evidence-map.md"),
+    CaseStage.EVIDENCE_MAP: (
+        "01-code-evidence-map.json",
+        "01-code-evidence-map.md",
+        "01-technical-disclosures.json",
+        "01-technical-disclosures.md",
+    ),
     CaseStage.INVENTION_CANDIDATES: (
         "02-invention-candidates.json",
         "02-invention-candidates.md",
@@ -99,7 +104,7 @@ ARTIFACT_TEMPLATES = {
         "01-code-evidence-map.md",
         """# 技术证据地图
 
-> 当前阶段只记录代码证据、处理步骤、数据或状态变化及技术效果，不写权利要求。
+> 当前阶段记录可哈希的工程证据；发明人确认但未编码的设计另存为 TD，不写权利要求。
 
 | 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | 证据状态 |
 |---|---|---|---|---|---|
@@ -109,7 +114,7 @@ ARTIFACT_TEMPLATES = {
         "02-invention-candidates.md",
         """# 候选发明
 
-> 从技术证据地图提取 3–5 个完整候选。先检索全部候选，再决定主发明。
+> 从可追溯工程证据与充分公开的技术披露中提取 3–5 个完整候选。先检索全部候选，再决定主发明。
 
 | 候选 | 技术问题 | 核心技术机制 | 关键区别特征 | 技术效果 | 代码证据 | 主要风险 |
 |---|---|---|---|---|---|---|
@@ -141,7 +146,7 @@ ARTIFACT_TEMPLATES = {
     ),
     CaseStage.CLAIMS_V1: (
         "05-claims-v1.md",
-        "# Claims V1\n\n> 每项限定必须回溯到技术证据地图。\n",
+        "# Claims V1\n\n> 每项实质限定必须回溯到 E### 或已通过充分公开校验的 TD###。\n",
     ),
     CaseStage.SPECIFICATION_V1: (
         "06-specification-v1.md",
@@ -336,13 +341,19 @@ def advance_stage(
             "revision": status.get("revision", 0),
         }
     )
-    _prepare_stage_artifact(case_dir, target)
+    _prepare_stage_artifact(case_dir, target, revision=status.get("revision", 0))
     _write_json(case_dir / "case-status.json", status)
     return status
 
 
 def resolve_case_question(
-    case_dir: Path, question_id: str, answer: str, source: str
+    case_dir: Path,
+    question_id: str,
+    answer: str,
+    source: str,
+    *,
+    resolution_type: str | None = None,
+    resulting_disclosure_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     case_dir = case_dir.resolve()
     if not answer.strip() or not source.strip():
@@ -361,6 +372,33 @@ def resolve_case_question(
             "resolved_at": datetime.now(UTC).isoformat(),
         }
     )
+    completion = question.get("candidate_completion")
+    if resolution_type is not None:
+        allowed = {
+            "candidate_confirmed",
+            "candidate_modified",
+            "candidate_rejected",
+            "unknown",
+        }
+        if question.get("category") != "technical" or resolution_type not in allowed:
+            raise ValueError("resolution_type is only valid for technical questions")
+        question["resolution_type"] = resolution_type
+        if completion:
+            if resolution_type in {"candidate_confirmed", "candidate_modified"}:
+                if not resulting_disclosure_ids:
+                    raise ValueError("Confirmed candidate completion requires resulting TD IDs")
+                completion["status"] = "confirmed_and_promoted"
+                if resolution_type == "candidate_modified":
+                    completion["user_modified_statement"] = answer.strip()
+                question["resulting_disclosure_ids"] = resulting_disclosure_ids
+            elif resolution_type == "candidate_rejected":
+                completion["status"] = "rejected"
+                question["resulting_disclosure_ids"] = []
+            else:
+                completion["status"] = "unknown"
+                question["resulting_disclosure_ids"] = []
+        elif resulting_disclosure_ids:
+            raise ValueError("TD promotion requires a candidate completion")
     errors = validate_schema(questions, "context-questions.schema.json")
     if errors:
         raise ValueError("Invalid context questions: " + "; ".join(errors))
@@ -394,6 +432,13 @@ def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[st
         raise ValueError(f"Revision archive already exists: {revision_id}")
     artifact_archive = revision_dir / "artifacts"
     artifact_archive.mkdir(parents=True)
+    if target == CaseStage.EVIDENCE_MAP:
+        for relative in ("context-questions.json", "context-ledger.md"):
+            source = case_dir / relative
+            if source.exists():
+                destination = artifact_archive / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
     for stage in CASE_STAGE_ORDER[CASE_STAGE_ORDER.index(target) :]:
         for relative in STAGE_ARTIFACTS.get(stage, ()):
             source = case_dir / relative
@@ -426,7 +471,9 @@ def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[st
             "trigger": current.value,
         }
     )
-    _prepare_stage_artifact(case_dir, target)
+    if target == CaseStage.EVIDENCE_MAP:
+        _invalidate_promoted_disclosure_questions(case_dir)
+    _prepare_stage_artifact(case_dir, target, revision=revision)
     _write_json(case_dir / "case-status.json", status)
     return status
 
@@ -452,6 +499,8 @@ def export_case_package(case_dir: Path, output_dir: Path) -> Path:
         "12-application/abstract.md",
         "12-application/application-metadata.json",
         "12-application/figures.json",
+        "01-technical-disclosures.json",
+        "01-technical-disclosures.md",
         "09-claim-support-map.json",
         "09-claim-support-map.md",
         "13-final-audit.json",
@@ -546,10 +595,20 @@ def _validate_stage(case_dir: Path, status: dict[str, Any], stage: CaseStage) ->
     return validators[stage](case_dir, status)
 
 
-def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
+def _prepare_stage_artifact(
+    case_dir: Path, stage: CaseStage, *, revision: int | None = None
+) -> None:
     if stage == CaseStage.EVIDENCE_MAP:
         _write_json(case_dir / "01-code-evidence-map.json", {"evidence": []})
         _render_evidence_map(case_dir, {"evidence": []})
+        disclosures = {
+            "case_revision": (
+                _load_status(case_dir).get("revision", 0) if revision is None else revision
+            ),
+            "disclosures": [],
+        }
+        _write_json(case_dir / "01-technical-disclosures.json", disclosures)
+        _render_technical_disclosures(case_dir, disclosures)
     elif stage == CaseStage.INVENTION_CANDIDATES:
         _write_json(case_dir / "02-invention-candidates.json", {"candidates": []})
         _render_invention_candidates(case_dir, {"candidates": []})
@@ -575,6 +634,7 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
                 "unity": {},
                 "amendment_basis": {},
                 "sensitive_information": {},
+                "unimplemented_disclosures": [],
             },
         )
         _render_final_audit(case_dir, {})
@@ -725,6 +785,143 @@ def _validate_snapshot(case_dir: Path, _: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_effect_basis(
+    statement: str, effect_basis: Any, label: str
+) -> list[str]:
+    errors: list[str] = []
+    quantified = re.search(
+        r"\d+(?:\.\d+)?\s*(?:%|％|倍|ms|毫秒|秒|分钟|MB|GB|GiB|MiB)",
+        statement,
+        flags=re.IGNORECASE,
+    )
+    if quantified and effect_basis != "measured":
+        errors.append(f"{label} quantifies an effect without measured basis")
+    return errors
+
+
+def _technical_disclosure_state(
+    case_dir: Path, evidence_map: dict[str, Any]
+) -> tuple[list[str], dict[str, Any], set[str]]:
+    try:
+        disclosures = _load_json(
+            case_dir / "01-technical-disclosures.json", "technical disclosures"
+        )
+        questions = _load_json(case_dir / "context-questions.json", "context questions")
+        status = _load_status(case_dir)
+    except ValueError as exc:
+        return [str(exc)], {"case_revision": 0, "disclosures": []}, set()
+
+    errors = validate_schema(disclosures, "technical-disclosures.schema.json")
+    errors.extend(validate_schema(questions, "context-questions.schema.json"))
+    if disclosures.get("case_revision", 0) > status.get("revision", 0):
+        errors.append("Technical disclosures reference a future case revision")
+
+    evidence_ids = {item.get("evidence_id") for item in evidence_map.get("evidence", [])}
+    question_map = {item.get("id"): item for item in questions.get("questions", [])}
+    disclosure_items = disclosures.get("disclosures", [])
+    disclosure_ids = [item.get("disclosure_id", "") for item in disclosure_items]
+    if len(disclosure_ids) != len(set(disclosure_ids)):
+        errors.append("Technical disclosure IDs must be unique")
+    known_td_ids = set(disclosure_ids)
+    approved: set[str] = set()
+
+    for question in questions.get("questions", []):
+        completion = question.get("candidate_completion")
+        if not completion:
+            continue
+        unknown_basis = set(completion.get("basis_refs", [])) - evidence_ids
+        if unknown_basis:
+            errors.append(
+                f"Candidate completion {question.get('id')} references unknown engineering evidence"
+            )
+        resulting = set(question.get("resulting_disclosure_ids", []))
+        completion_status = completion.get("status")
+        if completion_status == "confirmed_and_promoted":
+            if question.get("resolution_type") not in {
+                "candidate_confirmed",
+                "candidate_modified",
+            }:
+                errors.append(
+                    f"Promoted candidate completion {question.get('id')} "
+                    "lacks a confirming resolution"
+                )
+            if not resulting or resulting - known_td_ids:
+                errors.append(
+                    f"Promoted candidate completion {question.get('id')} lacks valid TD provenance"
+                )
+        elif resulting:
+            errors.append(
+                f"Unpromoted candidate completion {question.get('id')} cannot produce TD provenance"
+            )
+
+    for item in disclosure_items:
+        disclosure_id = item.get("disclosure_id", "")
+        question = question_map.get(item.get("question_id"))
+        if not question or question.get("category") != "technical":
+            errors.append(f"Technical disclosure {disclosure_id} lacks a technical source question")
+        elif disclosure_id not in question.get("resulting_disclosure_ids", []):
+            errors.append(
+                f"Technical disclosure {disclosure_id} is not linked from its source question"
+            )
+
+        lifecycle = item.get("lifecycle_status")
+        if lifecycle == "superseded":
+            successor = item.get("superseded_by")
+            if not successor or successor not in known_td_ids or successor == disclosure_id:
+                errors.append(
+                    f"Superseded technical disclosure {disclosure_id} lacks a valid successor"
+                )
+            continue
+        if item.get("superseded_by") is not None:
+            errors.append(f"Active technical disclosure {disclosure_id} cannot name a successor")
+
+        enablement = item.get("enablement", {})
+        if enablement.get("status") != "sufficient":
+            errors.append(f"Technical disclosure {disclosure_id} has incomplete enablement")
+        else:
+            approved.add(disclosure_id)
+
+        effect = item.get("technical_effect", {})
+        errors.extend(
+            _validate_effect_basis(
+                str(effect.get("statement", "")),
+                effect.get("effect_basis"),
+                f"Technical disclosure {disclosure_id}",
+            )
+        )
+        unknown_effect_refs = set(effect.get("evidence_refs", [])) - evidence_ids
+        if unknown_effect_refs:
+            errors.append(f"Technical disclosure {disclosure_id} has unknown effect evidence")
+
+    return errors, disclosures, approved
+
+
+def _invalidate_promoted_disclosure_questions(case_dir: Path) -> None:
+    path = case_dir / "context-questions.json"
+    questions = _load_json(path, "context questions")
+    changed = False
+    for item in questions.get("questions", []):
+        completion = item.get("candidate_completion")
+        if not completion or completion.get("status") != "confirmed_and_promoted":
+            continue
+        completion["status"] = "proposed"
+        completion.pop("user_modified_statement", None)
+        item.update(
+            {
+                "status": "open",
+                "resolution": None,
+                "source": None,
+                "resulting_disclosure_ids": [],
+            }
+        )
+        item.pop("resolution_type", None)
+        item.pop("resolved_at", None)
+        changed = True
+    if changed:
+        _write_json(path, questions)
+        _render_context_questions(case_dir, questions)
+
+
 def _validate_evidence_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
     try:
         evidence_map = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
@@ -750,10 +947,25 @@ def _validate_evidence_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
             and source["start_line"] > source["end_line"]
         ):
             errors.append(f"Evidence {item.get('evidence_id')} has an invalid line range")
+        errors.extend(
+            _validate_effect_basis(
+                str(item.get("technical_effect", "")),
+                item.get("effect_basis"),
+                f"Evidence {item.get('evidence_id')}",
+            )
+        )
+        if item.get("effect_basis") == "measured" and item.get("status") != "experiment-supported":
+            errors.append(
+                f"Evidence {item.get('evidence_id')} measured effect requires "
+                "experiment-supported status"
+            )
     if len(identifiers) != len(set(identifiers)):
         errors.append("Evidence IDs must be unique")
+    disclosure_errors, disclosures, _ = _technical_disclosure_state(case_dir, evidence_map)
+    errors.extend(disclosure_errors)
     if not errors:
         _render_evidence_map(case_dir, evidence_map)
+        _render_technical_disclosures(case_dir, disclosures)
     return errors
 
 
@@ -765,15 +977,31 @@ def _validate_invention_candidates(case_dir: Path, _: dict[str, Any]) -> list[st
         return [str(exc)]
     errors = validate_schema(candidates, "invention.schema.json")
     evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence)
+    errors.extend(disclosure_errors)
     candidate_ids: list[str] = []
     for item in candidates.get("candidates", []):
         candidate_ids.append(item.get("candidate_id", ""))
-        unknown = set(item.get("evidence_ids", [])) - evidence_ids
+        unknown = set(item.get("engineering_evidence_ids", [])) - evidence_ids
         if unknown:
             errors.append(
                 f"Candidate {item.get('candidate_id')} references unknown evidence: "
                 + ", ".join(sorted(unknown))
             )
+        unknown_td = set(item.get("technical_disclosure_ids", [])) - approved_td_ids
+        if unknown_td:
+            errors.append(
+                f"Candidate {item.get('candidate_id')} references unavailable "
+                "technical disclosure: "
+                + ", ".join(sorted(unknown_td))
+            )
+        errors.extend(
+            _validate_effect_basis(
+                "；".join(item.get("technical_effects", [])),
+                item.get("effect_basis"),
+                f"Candidate {item.get('candidate_id')}",
+            )
+        )
     if len(candidate_ids) != len(set(candidate_ids)):
         errors.append("Candidate IDs must be unique")
     if not errors:
@@ -789,6 +1017,8 @@ def _validate_feature_matrix(case_dir: Path, _: dict[str, Any]) -> list[str]:
         return [str(exc)]
     errors = validate_schema(matrix, "case-feature-matrix.schema.json")
     evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence)
+    errors.extend(disclosure_errors)
     feature_ids: list[str] = []
     for item in matrix.get("features", []):
         feature_ids.append(item.get("feature_id", ""))
@@ -798,6 +1028,19 @@ def _validate_feature_matrix(case_dir: Path, _: dict[str, Any]) -> list[str]:
                 f"Feature {item.get('feature_id')} references unknown evidence: "
                 + ", ".join(sorted(unknown))
             )
+        unknown_td = set(item.get("technical_disclosure_ids", [])) - approved_td_ids
+        if unknown_td:
+            errors.append(
+                f"Feature {item.get('feature_id')} references unavailable technical disclosure: "
+                + ", ".join(sorted(unknown_td))
+            )
+        errors.extend(
+            _validate_effect_basis(
+                str(item.get("distinguishing_effect", "")),
+                item.get("effect_basis"),
+                f"Feature {item.get('feature_id')}",
+            )
+        )
     if len(feature_ids) != len(set(feature_ids)):
         errors.append("Feature IDs must be unique")
     if not errors:
@@ -1124,7 +1367,14 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
     )
     errors = validate_schema(support, "claim-support-map.schema.json")
     evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence)
+    errors.extend(disclosure_errors)
     mapped: list[str] = []
+    independent_engineering_anchors: dict[str, set[str]] = {
+        str(entry.get("claim_id")): set()
+        for entry in structure.get("independent_claims", [])
+        if isinstance(entry, dict)
+    }
     for item in support.get("limitations", []):
         limitation_id = item.get("limitation_id", "")
         mapped.append(limitation_id)
@@ -1132,11 +1382,34 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
             errors.append(f"Claim support {limitation_id} has inconsistent claim_id")
         if set(item.get("engineering_evidence_ids", [])) - evidence_ids:
             errors.append(f"Claim support {limitation_id} references unknown evidence")
+        if set(item.get("technical_disclosure_ids", [])) - approved_td_ids:
+            errors.append(
+                f"Claim support {limitation_id} references unavailable technical disclosure"
+            )
+        if item.get("claim_id") in independent_engineering_anchors:
+            independent_engineering_anchors[item["claim_id"]].update(
+                item.get("engineering_evidence_ids", [])
+            )
+        errors.extend(
+            _validate_effect_basis(
+                str(item.get("technical_effect", "")),
+                item.get("effect_basis"),
+                f"Claim support {limitation_id}",
+            )
+        )
     if len(mapped) != len(set(mapped)):
         errors.append("Claim support limitation IDs must be unique")
     if set(mapped) != expected:
         errors.append(
             "Claim support map must cover exactly all independent and dependent limitations"
+        )
+    unanchored = sorted(
+        claim_id for claim_id, anchors in independent_engineering_anchors.items() if not anchors
+    )
+    if unanchored:
+        errors.append(
+            "Independent claims must retain engineering-evidence anchors: "
+            + ", ".join(unanchored)
         )
     if not errors:
         _render_claim_support_map(case_dir, support)
@@ -1361,6 +1634,19 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         return [str(exc)]
     errors = validate_schema(audit, "final-audit.schema.json")
+    support: dict[str, Any] = {"limitations": []}
+    disclosures: dict[str, Any] = {"disclosures": []}
+    approved_td_ids: set[str] = set()
+    try:
+        support = _load_json(case_dir / "09-claim-support-map.json", "claim support map")
+        evidence = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+    except ValueError as exc:
+        errors.append(str(exc))
+    else:
+        disclosure_errors, disclosures, approved_td_ids = _technical_disclosure_state(
+            case_dir, evidence
+        )
+        errors.extend(disclosure_errors)
     try:
         application_snapshot = _application_hash_snapshot(case_dir)
     except (OSError, ValueError) as exc:
@@ -1393,6 +1679,40 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
         cited.update(item.get("closest_reference_ids", []))
     if cited - reference_ids:
         errors.append("Final audit cites references absent from final-search records")
+
+    used_td: dict[str, set[str]] = {}
+    for item in support.get("limitations", []):
+        for disclosure_id in item.get("technical_disclosure_ids", []):
+            used_td.setdefault(disclosure_id, set()).add(item.get("limitation_id", ""))
+    disclosure_map = {
+        item.get("disclosure_id"): item for item in disclosures.get("disclosures", [])
+    }
+    expected_unimplemented = {
+        disclosure_id
+        for disclosure_id in used_td
+        if disclosure_id in approved_td_ids
+        and disclosure_map.get(disclosure_id, {}).get("implementation_status")
+        in {"partially_implemented", "designed_not_implemented"}
+    }
+    reported = {
+        item.get("disclosure_id"): item
+        for item in audit.get("unimplemented_disclosures", [])
+    }
+    if set(reported) != expected_unimplemented:
+        errors.append(
+            "Final audit must disclose exactly all claim-used unimplemented technical disclosures"
+        )
+    for disclosure_id, item in reported.items():
+        source = disclosure_map.get(disclosure_id, {})
+        if set(item.get("used_in_limitations", [])) != used_td.get(disclosure_id, set()):
+            errors.append(
+                f"Final audit has stale limitation usage for technical disclosure {disclosure_id}"
+            )
+        if item.get("implementation_status") != source.get("implementation_status"):
+            errors.append(
+                "Final audit has stale implementation status for technical disclosure "
+                f"{disclosure_id}"
+            )
     if not errors:
         _render_final_audit(case_dir, audit)
     return errors
@@ -1419,7 +1739,10 @@ def _validate_content_ready(case_dir: Path, _: dict[str, Any]) -> list[str]:
         for item in ledger.get("questions", [])
         if item.get("category") == "technical"
         and item.get("blocking") is True
-        and item.get("status") != "resolved"
+        and (
+            item.get("status") != "resolved"
+            or item.get("resolution_type") == "unknown"
+        )
     ]
     if unresolved:
         errors.append("Unresolved blocking technical questions: " + ", ".join(unresolved))
@@ -1534,6 +1857,8 @@ def _validate_figures(
         errors.append("Drawings-required application needs at least one canonical figure")
 
     evidence_ids = {item.get("evidence_id") for item in evidence_map.get("evidence", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence_map)
+    errors.extend(disclosure_errors)
     limitation_ids = {
         limitation
         for key in ("independent_claims", "dependent_claims")
@@ -1546,9 +1871,12 @@ def _validate_figures(
         if figure_id in figure_ids:
             errors.append(f"Duplicate figure ID: {figure_id}")
         figure_ids.add(figure_id)
-        unknown_evidence = set(figure.get("source_evidence_ids", [])) - evidence_ids
+        unknown_evidence = set(figure.get("engineering_evidence_ids", [])) - evidence_ids
         if unknown_evidence:
             errors.append(f"Figure {figure_id} references unknown engineering evidence")
+        unknown_td = set(figure.get("technical_disclosure_ids", [])) - approved_td_ids
+        if unknown_td:
+            errors.append(f"Figure {figure_id} references unavailable technical disclosure")
         unknown_limitations = set(figure.get("claim_limitation_ids", [])) - limitation_ids
         if unknown_limitations:
             errors.append(f"Figure {figure_id} references unknown claim limitations")
@@ -1735,8 +2063,8 @@ def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
         "",
         "> 本文件由 01-code-evidence-map.json 自动生成；请只编辑 JSON 事实源。",
         "",
-        "| 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | 证据状态 |",
-        "|---|---|---|---|---|---|",
+        "| 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | 效果依据 | 证据状态 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for item in data.get("evidence", []):
         source = item.get("source", {})
@@ -1753,6 +2081,7 @@ def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("processing_step", ""),
                     item.get("state_change", ""),
                     item.get("technical_effect", ""),
+                    item.get("effect_basis", ""),
                     item.get("status", ""),
                 )
             )
@@ -1761,14 +2090,49 @@ def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
     (case_dir / "01-code-evidence-map.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _render_technical_disclosures(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 已确认技术披露",
+        "",
+        "> 本文件由 01-technical-disclosures.json 自动生成；"
+        "TD 是用户确认的技术披露，不是工程证据。",
+        "",
+        "| 披露编号 | 来源问题 | 技术陈述 | 实现状态 | 充分公开 | 技术效果 | 效果依据 | 生命周期 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for item in data.get("disclosures", []):
+        effect = item.get("technical_effect", {})
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("disclosure_id", ""),
+                    item.get("question_id", ""),
+                    item.get("statement", ""),
+                    item.get("implementation_status", ""),
+                    item.get("enablement", {}).get("status", ""),
+                    effect.get("statement", ""),
+                    effect.get("effect_basis", ""),
+                    item.get("lifecycle_status", ""),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "01-technical-disclosures.md").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+
 def _render_invention_candidates(case_dir: Path, data: dict[str, Any]) -> None:
     lines = [
         "# 候选发明",
         "",
         "> 本文件由 02-invention-candidates.json 自动生成；请只编辑 JSON 事实源。",
         "",
-        "| 候选 | 名称 | 技术问题 | 核心机制 | 关键区别特征 | 技术效果 | 代码证据 | 风险 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 候选 | 名称 | 技术问题 | 核心机制 | 关键区别特征 | 技术效果 | "
+        "效果依据 | 工程证据 | 技术披露 | 风险 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in data.get("candidates", []):
         lines.append(
@@ -1782,7 +2146,9 @@ def _render_invention_candidates(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("mechanism", ""),
                     item.get("distinguishing_features", []),
                     item.get("technical_effects", []),
-                    item.get("evidence_ids", []),
+                    item.get("effect_basis", ""),
+                    item.get("engineering_evidence_ids", []),
+                    item.get("technical_disclosure_ids", []),
                     item.get("risk", ""),
                 )
             )
@@ -1797,8 +2163,8 @@ def _render_feature_matrix(case_dir: Path, data: dict[str, Any]) -> None:
         "",
         "> 本文件由 04-feature-matrix.json 自动生成；请只编辑 JSON 事实源。",
         "",
-        "| 特征编号 | 技术特征 | 工程证据 | 现有技术披露 | 区别与技术效果 |",
-        "|---|---|---|---|---|",
+        "| 特征编号 | 技术特征 | 工程证据 | 技术披露 | 现有技术披露 | 区别与技术效果 | 效果依据 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for item in data.get("features", []):
         references = "；".join(
@@ -1812,8 +2178,10 @@ def _render_feature_matrix(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("feature_id", ""),
                     item.get("feature", ""),
                     item.get("engineering_evidence_ids", []),
+                    item.get("technical_disclosure_ids", []),
                     references,
                     item.get("distinguishing_effect", ""),
+                    item.get("effect_basis", ""),
                 )
             )
             + " |"
@@ -1827,8 +2195,8 @@ def _render_claim_support_map(case_dir: Path, data: dict[str, Any]) -> None:
         "",
         "> 本文件由 09-claim-support-map.json 自动生成；请只编辑 JSON 事实源。",
         "",
-        "| 限定 | 权利要求 | 工程证据 | 说明书明确支持 | 技术效果 | 状态 |",
-        "|---|---|---|---|---|---|",
+        "| 限定 | 权利要求 | 工程证据 | 技术披露 | 说明书明确支持 | 技术效果 | 效果依据 | 状态 |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for item in data.get("limitations", []):
         lines.append(
@@ -1839,8 +2207,10 @@ def _render_claim_support_map(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("limitation_id", ""),
                     item.get("claim_id", ""),
                     item.get("engineering_evidence_ids", []),
+                    item.get("technical_disclosure_ids", []),
                     item.get("specification_sections", []),
                     item.get("technical_effect", ""),
+                    item.get("effect_basis", ""),
                     item.get("status", ""),
                 )
             )
@@ -1855,8 +2225,8 @@ def _render_context_questions(case_dir: Path, data: dict[str, Any]) -> None:
         "",
         "> 本文件由 context-questions.json 自动生成；问题是否阻断由结构化字段计算。",
         "",
-        "| 编号 | 类别 | 问题 | 阻断 | 影响 | 状态 | 答案 | 来源 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 编号 | 类别 | 问题 | 阻断 | 影响 | 候选补全 | 处理结果 | TD | 状态 | 答案 | 来源 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in data.get("questions", []):
         lines.append(
@@ -1869,6 +2239,9 @@ def _render_context_questions(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("question"),
                     item.get("blocking"),
                     item.get("impact"),
+                    item.get("candidate_completion", {}).get("statement", ""),
+                    item.get("resolution_type", ""),
+                    item.get("resulting_disclosure_ids", []),
                     item.get("status"),
                     item.get("resolution"),
                     item.get("source"),
@@ -1947,6 +2320,21 @@ def _render_final_audit(case_dir: Path, data: dict[str, Any]) -> None:
                 f"- 依据：{_markdown_cell(item.get('evidence_refs', []))}",
                 f"- 剩余风险：{item.get('residual_risk', '')}",
                 f"- 建议处理：{item.get('recommended_action', '')}",
+                "",
+            ]
+        )
+    lines.extend(["## 尚未在当前工程快照中完整实现的技术披露", ""])
+    disclosures = data.get("unimplemented_disclosures", [])
+    if not disclosures:
+        lines.extend(["- 无。", ""])
+    for item in disclosures:
+        lines.extend(
+            [
+                f"### {item.get('disclosure_id', '')}",
+                "",
+                f"- 实现状态：{item.get('implementation_status', '')}",
+                f"- 充分公开：{item.get('enablement_status', '')}",
+                f"- 使用限定：{_markdown_cell(item.get('used_in_limitations', []))}",
                 "",
             ]
         )

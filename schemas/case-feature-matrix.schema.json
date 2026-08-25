@@ -5,14 +5,21 @@
   "required": ["features"],
   "properties": {"features": {"type": "array", "minItems": 1, "items": {
     "type": "object",
-    "required": ["feature_id", "feature", "engineering_evidence_ids", "references", "distinguishing_effect"],
+    "required": ["feature_id", "feature", "engineering_evidence_ids", "technical_disclosure_ids", "references", "distinguishing_effect", "effect_basis"],
     "properties": {
       "feature_id": {"type": "string", "pattern": "^F[0-9]{3,}$"},
       "feature": {"type": "string", "minLength": 4},
-      "engineering_evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+      "engineering_evidence_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+      "technical_disclosure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}},
       "references": {"type": "object", "minProperties": 1, "additionalProperties": {"enum": ["disclosed", "partial", "not_disclosed", "uncertain"]}},
-      "distinguishing_effect": {"type": "string", "minLength": 4}
-    }, "additionalProperties": false
+      "distinguishing_effect": {"type": "string", "minLength": 4},
+      "effect_basis": {"enum": ["measured", "observed", "mechanism-derived"]}
+    },
+    "anyOf": [
+      {"properties": {"engineering_evidence_ids": {"minItems": 1}}},
+      {"properties": {"technical_disclosure_ids": {"minItems": 1}}}
+    ],
+    "additionalProperties": false
   }}},
   "additionalProperties": false
 }

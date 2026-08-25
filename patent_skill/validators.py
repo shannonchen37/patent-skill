@@ -12,14 +12,25 @@ def build_engineering_provenance(features: list[dict[str, Any]]) -> list[dict[st
     output: list[dict[str, Any]] = []
     for item in features:
         evidence = [Evidence(**row) for row in item.get("evidence", [])]
+        try:
+            status = ProvenanceStatus(item["status"])
+        except ValueError:
+            output.append(
+                {
+                    **item,
+                    "validation_errors": [
+                        "Engineering provenance accepts only file-backed code, "
+                        "document, or experiment support"
+                    ],
+                }
+            )
+            continue
         record = EngineeringProvenance(
             feature_id=item["feature_id"],
             invention_id=item["invention_id"],
             feature=item["feature"],
-            status=ProvenanceStatus(item["status"]),
+            status=status,
             evidence=evidence,
-            inventor_confirmation=item.get("inventor_confirmation", False),
-            enablement_review_required=item.get("enablement_review_required", False),
         )
         errors = record.validate()
         output.append({**item, "validation_errors": errors})

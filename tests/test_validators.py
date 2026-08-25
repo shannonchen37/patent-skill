@@ -15,7 +15,7 @@ def test_amendment_requires_original_basis() -> None:
     )
 
 
-def test_builder_preserves_proposed_enablement_gate() -> None:
+def test_builder_rejects_candidate_completion_as_engineering_evidence() -> None:
     result = build_engineering_provenance(
         [
             {
@@ -29,4 +29,4 @@ def test_builder_preserves_proposed_enablement_gate() -> None:
             }
         ]
     )
-    assert result[0]["validation_errors"] == []
+    assert result[0]["validation_errors"]

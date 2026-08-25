@@ -149,6 +149,7 @@ def _complete_evidence(case: Path) -> None:
                         "processing_step": "计算任务处理状态",
                         "state_change": "将等待状态更新为完成状态",
                         "technical_effect": "降低任务处理等待时延",
+                        "effect_basis": "mechanism-derived",
                         "status": "code-supported",
                     }
                 ]
@@ -169,7 +170,9 @@ def _complete_candidates(case: Path) -> None:
                 "mechanism": "依据任务状态执行反馈式资源分配",
                 "distinguishing_features": ["基于状态反馈动态调整资源"],
                 "technical_effects": ["降低任务排队等待时延"],
-                "evidence_ids": ["E001"],
+                "effect_basis": "mechanism-derived",
+                "engineering_evidence_ids": ["E001"],
+                "technical_disclosure_ids": [],
                 "risk": "medium",
             }
         )
@@ -189,8 +192,10 @@ def _complete_matrix(case: Path) -> None:
                         "feature_id": "F001",
                         "feature": "基于状态反馈动态调整资源",
                         "engineering_evidence_ids": ["E001"],
+                        "technical_disclosure_ids": [],
                         "references": {"CN123": "partial"},
                         "distinguishing_effect": "降低任务排队等待时延",
+                        "effect_basis": "mechanism-derived",
                     }
                 ]
             },
@@ -244,6 +249,7 @@ def _complete_final_audit(case: Path) -> None:
         "unity": dict(review),
         "amendment_basis": dict(review),
         "sensitive_information": dict(review),
+        "unimplemented_disclosures": [],
     }
     _write(case / "13-final-audit.json", json.dumps(audit, ensure_ascii=False))
 
@@ -465,8 +471,10 @@ def test_golden_case_revision_export_and_docx_gates(tmp_path: Path) -> None:
                         "limitation_id": "I1-L1",
                         "claim_id": "I1",
                         "engineering_evidence_ids": ["E001"],
+                        "technical_disclosure_ids": [],
                         "specification_sections": ["段落1"],
                         "technical_effect": "降低任务处理时延",
+                        "effect_basis": "mechanism-derived",
                         "status": "supported",
                     }
                 ]
@@ -511,8 +519,10 @@ def test_golden_case_revision_export_and_docx_gates(tmp_path: Path) -> None:
                         "limitation_id": "I1-L1",
                         "claim_id": "I1",
                         "engineering_evidence_ids": ["E001"],
+                        "technical_disclosure_ids": [],
                         "specification_sections": ["段落1"],
                         "technical_effect": "降低任务处理时延",
+                        "effect_basis": "mechanism-derived",
                         "status": "supported",
                     }
                 ]
@@ -721,16 +731,20 @@ def test_support_map_requires_exactly_one_row_per_structured_limitation(
                         "limitation_id": "I1-L1",
                         "claim_id": "I1",
                         "engineering_evidence_ids": ["E001"],
+                        "technical_disclosure_ids": [],
                         "specification_sections": ["段落1"],
                         "technical_effect": "降低处理时延",
+                        "effect_basis": "mechanism-derived",
                         "status": "supported",
                     },
                     {
                         "limitation_id": "I1-L1",
                         "claim_id": "I1",
                         "engineering_evidence_ids": ["E001"],
+                        "technical_disclosure_ids": [],
                         "specification_sections": ["段落1"],
                         "technical_effect": "降低处理时延",
+                        "effect_basis": "mechanism-derived",
                         "status": "supported",
                     },
                 ]
@@ -1030,7 +1044,8 @@ def test_figure_manifest_rejects_unproven_semantics_and_missing_file(tmp_path: P
                 "figure_number": 1,
                 "type": "flowchart",
                 "purpose": "展示状态反馈流程",
-                "source_evidence_ids": ["E999"],
+                "engineering_evidence_ids": ["E999"],
+                "technical_disclosure_ids": [],
                 "claim_limitation_ids": ["I1-L1"],
                 "nodes": [{"id": "N1", "label": "获取状态"}],
                 "edges": [],

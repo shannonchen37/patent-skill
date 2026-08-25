@@ -7,19 +7,25 @@
     "figures_required": {"type": "boolean"},
     "figures": {"type": "array", "items": {
       "type": "object",
-      "required": ["figure_id", "figure_number", "type", "purpose", "source_evidence_ids", "claim_limitation_ids", "nodes", "edges", "file", "sha256"],
+      "required": ["figure_id", "figure_number", "type", "purpose", "engineering_evidence_ids", "technical_disclosure_ids", "claim_limitation_ids", "nodes", "edges", "file", "sha256"],
       "properties": {
         "figure_id": {"type": "string", "pattern": "^FIG-[0-9]{2,}$"},
         "figure_number": {"type": "integer", "minimum": 1},
         "type": {"enum": ["flowchart", "architecture", "interaction", "state_transition", "data_structure", "other"]},
         "purpose": {"type": "string", "minLength": 4},
-        "source_evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+        "engineering_evidence_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+        "technical_disclosure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}},
         "claim_limitation_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}},
         "nodes": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "label"], "properties": {"id": {"type": "string", "minLength": 1}, "label": {"type": "string", "minLength": 1}}, "additionalProperties": false}},
         "edges": {"type": "array", "items": {"type": "object", "required": ["from", "to"], "properties": {"from": {"type": "string"}, "to": {"type": "string"}}, "additionalProperties": false}},
         "file": {"type": "string", "pattern": "^figures/[^/]+\\.(svg|png)$"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-      }, "additionalProperties": false
+      },
+      "anyOf": [
+        {"properties": {"engineering_evidence_ids": {"minItems": 1}}},
+        {"properties": {"technical_disclosure_ids": {"minItems": 1}}}
+      ],
+      "additionalProperties": false
     }},
     "abstract_figure_id": {"type": ["string", "null"], "pattern": "^FIG-[0-9]{2,}$"}
   },

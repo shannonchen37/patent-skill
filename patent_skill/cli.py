@@ -45,6 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("question_id")
     resolve.add_argument("--answer", required=True)
     resolve.add_argument("--source", required=True)
+    resolve.add_argument(
+        "--resolution-type",
+        choices=(
+            "candidate_confirmed",
+            "candidate_modified",
+            "candidate_rejected",
+            "unknown",
+        ),
+    )
+    resolve.add_argument("--disclosure-id", action="append", default=[])
     export = case_commands.add_parser("export")
     export.add_argument("case_dir", type=Path)
     export.add_argument("--output", type=Path, required=True)
@@ -101,7 +111,12 @@ def _run_case(args: argparse.Namespace) -> int:
             print(f"PASS reopened {status['current_stage']} as revision {status['revision']}")
         elif args.case_command == "resolve-question":
             question = resolve_case_question(
-                args.case_dir, args.question_id, args.answer, args.source
+                args.case_dir,
+                args.question_id,
+                args.answer,
+                args.source,
+                resolution_type=args.resolution_type,
+                resulting_disclosure_ids=args.disclosure_id,
             )
             print(f"PASS resolved {question['id']}")
         elif args.case_command == "export":

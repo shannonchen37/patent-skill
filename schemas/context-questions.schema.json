@@ -16,7 +16,28 @@
       "resolution": {"type": ["string", "null"]},
       "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
       "source": {"type": ["string", "null"]},
-      "resolved_at": {"type": "string", "format": "date-time"}
+      "resolved_at": {"type": "string", "format": "date-time"},
+      "resolution_type": {
+        "enum": ["candidate_confirmed", "candidate_modified", "candidate_rejected", "unknown"]
+      },
+      "candidate_completion": {
+        "type": "object",
+        "required": ["statement", "basis_refs", "status"],
+        "properties": {
+          "statement": {"type": "string", "minLength": 8},
+          "basis_refs": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}
+          },
+          "status": {"enum": ["proposed", "confirmed_and_promoted", "rejected", "unknown"]},
+          "user_modified_statement": {"type": "string", "minLength": 8}
+        },
+        "additionalProperties": false
+      },
+      "resulting_disclosure_ids": {
+        "type": "array", "uniqueItems": true,
+        "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}
+      }
     }, "additionalProperties": false
   }}},
   "additionalProperties": false

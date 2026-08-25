@@ -12,8 +12,6 @@ class ProvenanceStatus(StrEnum):
     CODE = "code-supported"
     DOCUMENT = "document-supported"
     EXPERIMENT = "experiment-supported"
-    DEVELOPER_CONFIRMED = "developer-confirmed"
-    PROPOSED = "proposed-but-enabled"
     INSUFFICIENT = "insufficiently-supported"
     CONTRADICTED = "contradicted"
 
@@ -53,16 +51,13 @@ class EngineeringProvenance:
     feature: str
     status: ProvenanceStatus
     evidence: list[Evidence] = field(default_factory=list)
-    inventor_confirmation: bool = False
-    enablement_review_required: bool = False
 
     def validate(self) -> list[str]:
-        errors: list[str] = []
-        if self.status is ProvenanceStatus.DEVELOPER_CONFIRMED and not self.inventor_confirmation:
-            errors.append("developer-confirmed requires inventor_confirmation=true")
-        if self.status is ProvenanceStatus.PROPOSED and not self.enablement_review_required:
-            errors.append("proposed-but-enabled requires enablement_review_required=true")
-        return errors
+        if self.status in {ProvenanceStatus.INSUFFICIENT, ProvenanceStatus.CONTRADICTED}:
+            return ["Canonical engineering provenance requires a supported frozen source"]
+        if not self.evidence:
+            return ["Canonical engineering provenance requires file-backed evidence"]
+        return []
 
 
 @dataclass(slots=True)

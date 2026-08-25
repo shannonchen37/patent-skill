@@ -6,15 +6,13 @@ from patent_skill.models import (
 )
 
 
-def test_developer_confirmed_requires_confirmation() -> None:
-    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.DEVELOPER_CONFIRMED)
+def test_engineering_provenance_requires_file_backed_evidence() -> None:
+    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.CODE)
     assert record.validate()
-    record.inventor_confirmation = True
-    assert record.validate() == []
 
 
-def test_proposed_requires_enablement_review() -> None:
-    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.PROPOSED)
+def test_unsupported_status_cannot_be_canonical_engineering_provenance() -> None:
+    record = EngineeringProvenance("F001", "P001", "feature", ProvenanceStatus.INSUFFICIENT)
     assert record.validate()
 
 

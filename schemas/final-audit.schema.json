@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Structured Final Patent Audit",
   "type": "object",
-  "required": ["audited_application", "novelty", "inventive_step", "eligibility", "clarity_and_support", "enablement", "unity", "amendment_basis", "sensitive_information"],
+  "required": ["audited_application", "novelty", "inventive_step", "eligibility", "clarity_and_support", "enablement", "unity", "amendment_basis", "sensitive_information", "unimplemented_disclosures"],
   "$defs": {
     "status": {"enum": ["PASS", "RISK", "ATTORNEY_REVIEW_REQUIRED"]},
     "review": {"type": "object", "required": ["status", "conclusion", "evidence_refs", "residual_risk", "recommended_action"], "properties": {
@@ -35,7 +35,24 @@
     }, "additionalProperties": false},
     "eligibility": {"$ref": "#/$defs/review"}, "clarity_and_support": {"$ref": "#/$defs/review"},
     "enablement": {"$ref": "#/$defs/review"}, "unity": {"$ref": "#/$defs/review"},
-    "amendment_basis": {"$ref": "#/$defs/review"}, "sensitive_information": {"$ref": "#/$defs/review"}
+    "amendment_basis": {"$ref": "#/$defs/review"}, "sensitive_information": {"$ref": "#/$defs/review"},
+    "unimplemented_disclosures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["disclosure_id", "used_in_limitations", "enablement_status", "implementation_status"],
+        "properties": {
+          "disclosure_id": {"type": "string", "pattern": "^TD[0-9]{3,}$"},
+          "used_in_limitations": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}
+          },
+          "enablement_status": {"const": "sufficient"},
+          "implementation_status": {"enum": ["partially_implemented", "designed_not_implemented"]}
+        },
+        "additionalProperties": false
+      }
+    }
   },
   "additionalProperties": false
 }
