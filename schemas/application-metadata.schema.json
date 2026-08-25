@@ -8,6 +8,7 @@
     "specification_final_sha256",
     "abstract_sha256",
     "drawings_description_sha256",
+    "drawings",
     "limitation_sync"
   ],
   "properties": {
@@ -15,7 +16,18 @@
     "claims_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "specification_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "abstract_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "drawings_description_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "drawings_description_sha256": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+    "drawings": {
+      "type": "object",
+      "required": ["required", "reason", "abstract_figure_required", "abstract_figure_id"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 4},
+        "abstract_figure_required": {"type": "boolean"},
+        "abstract_figure_id": {"type": ["string", "null"], "pattern": "^FIG-[0-9]{2,}$"}
+      },
+      "additionalProperties": false
+    },
     "limitation_sync": {
       "type": "array",
       "minItems": 1,
@@ -32,7 +44,7 @@
           "status"
         ],
         "properties": {
-          "limitation_id": {"type": "string", "pattern": "^I[1-9][0-9]*-L[1-9][0-9]*$"},
+          "limitation_id": {"type": "string", "pattern": "^(I|D)[1-9][0-9]*-L[1-9][0-9]*$"},
           "specification_sections": {
             "type": "array",
             "minItems": 1,

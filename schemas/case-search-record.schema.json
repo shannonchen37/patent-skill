@@ -3,6 +3,7 @@
   "title": "Canonical Case Search Record",
   "type": "object",
   "required": [
+    "record_id",
     "database",
     "search_date",
     "query",
@@ -13,14 +14,15 @@
     "coverage_limitations"
   ],
   "properties": {
-    "database": {"type": "string", "minLength": 1},
-    "search_date": {"type": "string", "minLength": 1},
-    "query": {"type": "string", "minLength": 1},
+    "record_id": {"type": "string", "pattern": "^S[0-9]+$"},
+    "database": {"type": "string", "minLength": 2},
+    "search_date": {"type": "string", "format": "date"},
+    "query": {"type": "string", "minLength": 2},
     "candidate_id": {"type": "string", "minLength": 1},
     "result_count": {"type": "integer", "minimum": 0},
-    "reviewed_reference_ids": {"type": "array", "items": {"type": "string"}},
-    "verified_urls": {"type": "array", "items": {"type": "string"}},
-    "coverage_limitations": {"type": "string"},
+    "reviewed_reference_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "verified_urls": {"type": "array", "uniqueItems": true, "items": {"type": "string", "format": "uri"}},
+    "coverage_limitations": {"type": "string", "minLength": 4},
     "claim_id": {"type": "string", "pattern": "^I[1-9][0-9]*$"},
     "limitation_ids": {
       "type": "array",
@@ -32,5 +34,5 @@
       "enum": ["claim_combination", "distinguishing_limitation"]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

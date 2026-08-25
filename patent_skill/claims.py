@@ -5,6 +5,7 @@ import re
 CLAIM_RE = re.compile(r"^\s*(\d+)[\.、]\s*(.+)$")
 REFERENCE_RE = re.compile(r"根据权利要求\s*([\d、,，至到或和\-\s]+)\s*所述的?([^，,；;。]+)")
 INTERNAL_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+TRACE_LABEL_RE = re.compile(r"\[((?:I|D)\d+-L\d+)\]")
 
 
 def parse_claim_blocks(text: str) -> dict[int, list[str]]:
@@ -32,6 +33,15 @@ def independent_claim_numbers(text: str) -> set[int]:
     }
 
 
+def claim_dependencies(text: str) -> dict[int, list[int]]:
+    dependencies: dict[int, list[int]] = {}
+    for number, claim in parse_claims(INTERNAL_COMMENT_RE.sub("", text)).items():
+        match = REFERENCE_RE.search(claim)
+        if match:
+            dependencies[number] = _reference_numbers(match.group(1))
+    return dependencies
+
+
 def validate_claims_cn(text: str) -> list[str]:
     text = INTERNAL_COMMENT_RE.sub("", text)
     claims = parse_claims(text)
@@ -57,6 +67,45 @@ def validate_claims_cn(text: str) -> list[str]:
         if not claim.rstrip().endswith("。"):
             errors.append(f"Claim {number} should end with a full stop")
     return errors
+
+
+def validate_no_internal_prose_inside_claim_body(text: str) -> list[str]:
+    seen_claim = False
+    for line in text.splitlines():
+        if CLAIM_RE.match(line):
+            seen_claim = True
+        elif seen_claim and line.lstrip().startswith(("#", ">", "<!--")):
+            return ["Internal Markdown metadata appears after formal claims begin"]
+    return []
+
+
+def render_filing_claims(text: str) -> str:
+    blocks = parse_claim_blocks(text)
+    if not blocks:
+        raise ValueError("No numbered claims found")
+    errors = validate_no_internal_prose_inside_claim_body(text)
+    if errors:
+        raise ValueError("; ".join(errors))
+
+    lines = ["# 权利要求书", ""]
+    for number in sorted(blocks):
+        parts = []
+        for part in blocks[number]:
+            clean = TRACE_LABEL_RE.sub("", part).strip()
+            if clean.startswith(("#", ">", "<!--")):
+                continue
+            if clean:
+                parts.append(clean)
+        if not parts:
+            raise ValueError(f"Claim {number} is empty after filing cleanup")
+        lines.append(f"{number}. {parts[0]}")
+        lines.extend(parts[1:])
+        lines.append("")
+    result = "\n".join(lines).rstrip() + "\n"
+    errors = validate_claims_cn(result)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return result
 
 
 def _reference_numbers(raw: str) -> list[int]:

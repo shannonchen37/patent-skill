@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Final Search Source Binding",
+  "type": "object",
+  "required": ["revision", "source", "started_at", "completed_at"],
+  "properties": {
+    "revision": {"type": "integer", "minimum": 0},
+    "source": {"type": "object", "required": ["claims_v2_sha256", "claims_v2_structure_sha256"], "properties": {
+      "claims_v2_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "claims_v2_structure_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }, "additionalProperties": false},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "additionalProperties": false
+}

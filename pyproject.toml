@@ -19,7 +19,7 @@ Issues = "https://github.com/shannonchen37/patent-skill/issues"
 
 [project.optional-dependencies]
 docx = ["python-docx>=1.1"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["build>=1.2", "pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 patent-skill = "patent_skill.cli:main"
@@ -34,6 +34,13 @@ packages = ["patent_skill"]
 "schemas/context-questions.schema.json" = "patent_skill/schemas/context-questions.schema.json"
 "schemas/application-metadata.schema.json" = "patent_skill/schemas/application-metadata.schema.json"
 "schemas/final-audit.schema.json" = "patent_skill/schemas/final-audit.schema.json"
+"schemas/figure-manifest.schema.json" = "patent_skill/schemas/figure-manifest.schema.json"
+"schemas/claims-v2-structure.schema.json" = "patent_skill/schemas/claims-v2-structure.schema.json"
+"schemas/claim-support-map.schema.json" = "patent_skill/schemas/claim-support-map.schema.json"
+"schemas/case-search-record.schema.json" = "patent_skill/schemas/case-search-record.schema.json"
+"schemas/final-search-session.schema.json" = "patent_skill/schemas/final-search-session.schema.json"
+"schemas/case-status.schema.json" = "patent_skill/schemas/case-status.schema.json"
+"schemas/independent-audit.schema.json" = "patent_skill/schemas/independent-audit.schema.json"
 
 [tool.pytest.ini_options]
 addopts = "-q"

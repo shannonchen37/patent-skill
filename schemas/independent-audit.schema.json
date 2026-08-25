@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent Drafting Audit Reconciliation",
+  "type": "object",
+  "required": ["audit_id", "auditor", "source_application", "source_final_audit_sha256", "findings", "overall_status"],
+  "properties": {
+    "audit_id": {"type": "string", "pattern": "^A[0-9]{3,}$"},
+    "auditor": {"type": "object", "required": ["tool", "version"], "properties": {"tool": {"type": "string", "minLength": 2}, "version": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+    "source_application": {"type": "object", "required": ["revision", "claims_final_sha256", "specification_final_sha256", "abstract_sha256", "drawings_manifest_sha256"], "properties": {
+      "revision": {"type": "integer", "minimum": 0}, "claims_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "specification_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "abstract_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "drawings_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }, "additionalProperties": false},
+    "source_final_audit_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "findings": {"type": "array", "items": {"type": "object", "required": ["finding_id", "category", "severity", "affected_claims", "affected_limitation_ids", "finding", "recommendation", "disposition", "resolution", "revision_id"], "properties": {
+      "finding_id": {"type": "string", "pattern": "^H[0-9]{3,}$"},
+      "category": {"enum": ["claim_scope", "support", "clarity", "enablement", "terminology", "drawings", "formalities", "other"]},
+      "severity": {"enum": ["editorial", "substantive", "blocking"]},
+      "affected_claims": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+      "affected_limitation_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}},
+      "finding": {"type": "string", "minLength": 4}, "recommendation": {"type": "string", "minLength": 4},
+      "disposition": {"enum": ["no_change_needed", "rejected_with_reason", "resolved_by_revision", "attorney_review_required", "revision_required"]},
+      "resolution": {"type": ["string", "null"]}, "revision_id": {"type": ["string", "null"], "pattern": "^R[0-9]{3,}$"}
+    }, "additionalProperties": false}},
+    "overall_status": {"enum": ["PENDING", "RESOLVED", "RESOLVED_WITH_ATTORNEY_REVIEW"]}
+  },
+  "additionalProperties": false
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Claims V2 Independent Claim Structure",
   "type": "object",
-  "required": ["independent_claims"],
+  "required": ["independent_claims", "dependent_claims"],
   "properties": {
     "independent_claims": {
       "type": "array",
@@ -30,6 +30,21 @@
             "uniqueItems": true,
             "items": {"type": "string", "pattern": "^I[1-9][0-9]*-L[1-9][0-9]*$"}
           }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dependent_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "claim_number", "depends_on", "added_limitation_ids", "fallback_priority"],
+        "properties": {
+          "claim_id": {"type": "string", "pattern": "^D[1-9][0-9]*$"},
+          "claim_number": {"type": "integer", "minimum": 2},
+          "depends_on": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+          "added_limitation_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^D[1-9][0-9]*-L[1-9][0-9]*$"}},
+          "fallback_priority": {"enum": ["normal", "high"]}
         },
         "additionalProperties": false
       }

@@ -14,10 +14,14 @@ from typing import Any
 from xml.etree import ElementTree
 
 from .claims import (
+    TRACE_LABEL_RE,
+    claim_dependencies,
     independent_claim_numbers,
     parse_claim_blocks,
+    render_filing_claims,
     validate_abstract_cn,
     validate_claims_cn,
+    validate_no_internal_prose_inside_claim_body,
 )
 from .scanner import scan_archive, scan_repository
 from .schema_validation import validate_schema
@@ -46,6 +50,7 @@ class CaseStage(StrEnum):
 CASE_STAGE_ORDER = list(CaseStage)
 SNAPSHOT_TYPES = {"git_commit", "uploaded_archive", "directory_manifest"}
 SEARCH_FIELDS = {
+    "record_id",
     "database",
     "search_date",
     "query",
@@ -57,16 +62,13 @@ SEARCH_FIELDS = {
 }
 FINAL_SEARCH_FIELDS = {"claim_id", "limitation_ids", "search_scope"}
 FINAL_SEARCH_SCOPES = {"claim_combination", "distinguishing_limitation"}
-TRACE_LABEL_RE = re.compile(r"\[(I\d+-L\d+)\]")
-TRACE_LINE_RE = re.compile(r"^[；;、]?\s*\[(I\d+-L\d+)\]\s*(.+)$")
+TRACE_LINE_RE = re.compile(r"^[；;、]?\s*\[((?:I|D)\d+-L\d+)\]\s*(.+)$")
 MIN_DOCX_SIZE = 1024
-REQUIRED_DOCX_SUBJECTS = (
+BASE_REQUIRED_DOCX_SUBJECTS = (
     "技术交底书",
     "权利要求书",
     "说明书",
     "说明书摘要",
-    "说明书附图",
-    "摘要附图",
     "初步查新",
     "请求书信息确认",
     "提交文件清单",
@@ -85,7 +87,7 @@ STAGE_ARTIFACTS: dict[CaseStage, tuple[str, ...]] = {
     CaseStage.SPECIFICATION_V1: ("06-specification-v1.md",),
     CaseStage.SUPPORT_CANDIDATES: ("07-support-candidates.md",),
     CaseStage.CLAIMS_V2: ("08-claims-v2.md", "08-claims-v2-structure.json"),
-    CaseStage.CLAIM_SUPPORT_MAP: ("09-claim-support-map.md",),
+    CaseStage.CLAIM_SUPPORT_MAP: ("09-claim-support-map.json", "09-claim-support-map.md"),
     CaseStage.FINAL_SEARCH: ("10-final-search",),
     CaseStage.APPLICATION_DRAFT: ("12-application",),
     CaseStage.FINAL_AUDIT: ("13-final-audit.json", "13-final-audit.md"),
@@ -448,15 +450,24 @@ def export_case_package(case_dir: Path, output_dir: Path) -> Path:
         "12-application/claims-final.md",
         "12-application/specification-final.md",
         "12-application/abstract.md",
-        "12-application/drawings-description.md",
         "12-application/application-metadata.json",
+        "12-application/figures.json",
+        "09-claim-support-map.json",
         "09-claim-support-map.md",
         "13-final-audit.json",
         "13-final-audit.md",
     ):
         source = case_dir / relative
+        if not source.exists():
+            continue
         destination = output_dir / Path(relative).name
         shutil.copy2(source, destination)
+    drawings_description = case_dir / "12-application" / "drawings-description.md"
+    if drawings_description.exists():
+        shutil.copy2(drawings_description, output_dir / drawings_description.name)
+    figures = case_dir / "12-application" / "figures"
+    if figures.exists():
+        shutil.copytree(figures, output_dir / "figures")
     _write_json(
         output_dir / "export-manifest.json",
         {
@@ -466,10 +477,10 @@ def export_case_package(case_dir: Path, output_dir: Path) -> Path:
             "exported_at": datetime.now(UTC).isoformat(),
             "files": [
                 {
-                    "path": path.name,
+                    "path": path.relative_to(output_dir).as_posix(),
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 }
-                for path in sorted(output_dir.iterdir())
+                for path in sorted(output_dir.rglob("*"))
                 if path.is_file() and path.name != "export-manifest.json"
             ],
         },
@@ -487,6 +498,7 @@ def validate_case_workspace(case_dir: Path) -> list[str]:
     except ValueError as exc:
         return [str(exc)]
     errors: list[str] = []
+    errors.extend(validate_schema(status, "case-status.schema.json"))
     if status.get("canonical_source") != "patent-skill":
         errors.append("canonical_source must be patent-skill")
     if status.get("current_stage") == "FILING_READY":
@@ -547,13 +559,14 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
     elif stage == CaseStage.FIRST_SEARCH:
         _prepare_search_dir(case_dir / "03-prior-art-search")
     elif stage == CaseStage.FINAL_SEARCH:
-        _prepare_search_dir(case_dir / "10-final-search")
+        _prepare_final_search(case_dir)
     elif stage == CaseStage.APPLICATION_DRAFT:
         _prepare_application_draft(case_dir)
     elif stage == CaseStage.FINAL_AUDIT:
         _write_json(
             case_dir / "13-final-audit.json",
             {
+                "audited_application": _application_hash_snapshot(case_dir),
                 "novelty": {},
                 "inventive_step": {},
                 "eligibility": {},
@@ -569,10 +582,16 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
         directory = case_dir / "filing-package" / "huang-audit"
         directory.mkdir(parents=True, exist_ok=True)
         (case_dir / "filing-package" / "docx").mkdir(parents=True, exist_ok=True)
-        (directory / "independent-audit.md").write_text(
-            "# 独立审稿\n\n> 不得重选发明点；只审计中国专利撰写质量。\n",
-            encoding="utf-8",
-        )
+        audit = {
+            "audit_id": "",
+            "auditor": {"tool": "HuangXinzhe/cn-patent-drafting", "version": "unknown"},
+            "source_application": _application_hash_snapshot(case_dir),
+            "source_final_audit_sha256": _sha256_file(case_dir / "13-final-audit.json"),
+            "findings": [],
+            "overall_status": "PENDING",
+        }
+        _write_json(directory / "independent-audit.json", audit)
+        _render_independent_audit(directory, audit)
     elif stage == CaseStage.DOCX_PACKAGE_RENDERED:
         (case_dir / "filing-package" / "docx").mkdir(parents=True, exist_ok=True)
     elif stage in ARTIFACT_TEMPLATES:
@@ -583,8 +602,11 @@ def _prepare_stage_artifact(case_dir: Path, stage: CaseStage) -> None:
         if stage == CaseStage.CLAIMS_V2:
             _write_json(
                 case_dir / "08-claims-v2-structure.json",
-                {"independent_claims": []},
+                {"independent_claims": [], "dependent_claims": []},
             )
+        elif stage == CaseStage.CLAIM_SUPPORT_MAP:
+            _write_json(case_dir / "09-claim-support-map.json", {"limitations": []})
+            _render_claim_support_map(case_dir, {"limitations": []})
 
 
 def _prepare_search_dir(path: Path) -> None:
@@ -599,12 +621,32 @@ def _prepare_search_dir(path: Path) -> None:
     )
 
 
+def _prepare_final_search(case_dir: Path) -> None:
+    directory = case_dir / "10-final-search"
+    _prepare_search_dir(directory)
+    status = _load_status(case_dir)
+    _write_json(
+        directory / "search-session.json",
+        {
+            "revision": status.get("revision", 0),
+            "source": {
+                "claims_v2_sha256": _sha256_file(case_dir / "08-claims-v2.md"),
+                "claims_v2_structure_sha256": _sha256_file(
+                    case_dir / "08-claims-v2-structure.json"
+                ),
+            },
+            "started_at": datetime.now(UTC).isoformat(),
+            "completed_at": None,
+        },
+    )
+
+
 def _prepare_application_draft(case_dir: Path) -> None:
     application = case_dir / "12-application"
     application.mkdir(parents=True, exist_ok=True)
     claims_v2 = case_dir / "08-claims-v2.md"
     claims_text = claims_v2.read_text(encoding="utf-8") if claims_v2.exists() else ""
-    claims_final = TRACE_LABEL_RE.sub("", claims_text)
+    claims_final = render_filing_claims(claims_text)
     (application / "claims-final.md").write_text(claims_final, encoding="utf-8")
     specification_v1 = case_dir / "06-specification-v1.md"
     specification_seed = (
@@ -619,8 +661,12 @@ def _prepare_application_draft(case_dir: Path) -> None:
         encoding="utf-8",
     )
     (application / "drawings-description.md").write_text(
-        "# 附图说明\n\n【待根据最终说明书确认附图及标记】\n",
+        "# 附图说明\n\n【待明确本案是否需要附图】\n",
         encoding="utf-8",
+    )
+    _write_json(
+        application / "figures.json",
+        {"figures_required": False, "figures": [], "abstract_figure_id": None},
     )
     _write_json(
         application / "application-metadata.json",
@@ -630,9 +676,27 @@ def _prepare_application_draft(case_dir: Path) -> None:
             "specification_final_sha256": "",
             "abstract_sha256": "",
             "drawings_description_sha256": "",
+            "drawings": {
+                "required": False,
+                "reason": "【待明确文字是否足以清楚完整说明技术方案】",
+                "abstract_figure_required": False,
+                "abstract_figure_id": None,
+            },
             "limitation_sync": [],
         },
     )
+
+
+def _application_hash_snapshot(case_dir: Path) -> dict[str, Any]:
+    application = case_dir / "12-application"
+    status = _load_status(case_dir)
+    return {
+        "revision": status.get("revision", 0),
+        "claims_final_sha256": _sha256_file(application / "claims-final.md"),
+        "specification_final_sha256": _sha256_file(application / "specification-final.md"),
+        "abstract_sha256": _sha256_file(application / "abstract.md"),
+        "drawings_manifest_sha256": _sha256_file(application / "figures.json"),
+    }
 
 
 def _validate_snapshot(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -783,6 +847,7 @@ def _read_search_records(
     errors: list[str] = []
     records: list[tuple[int, dict[str, Any]]] = []
     required_fields = SEARCH_FIELDS | (additional_fields or set())
+    record_ids: list[str] = []
     for line_number, line in enumerate(records_path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
@@ -797,15 +862,18 @@ def _read_search_records(
         missing = sorted(required_fields - record.keys())
         if missing:
             errors.append(f"Search line {line_number} missing fields: {', '.join(missing)}")
-        if not isinstance(record.get("reviewed_reference_ids"), list):
-            errors.append(f"Search line {line_number} reviewed_reference_ids must be a list")
-        if not isinstance(record.get("verified_urls"), list):
-            errors.append(f"Search line {line_number} verified_urls must be a list")
-        if not isinstance(record.get("query"), str) or not record["query"].strip():
-            errors.append(f"Search line {line_number} query must be non-empty")
+        errors.extend(
+            f"Search line {line_number}: {error}"
+            for error in validate_schema(record, "case-search-record.schema.json")
+        )
+        record_ids.append(str(record.get("record_id", "")))
+        if record.get("result_count", 0) > 0 and not record.get("reviewed_reference_ids"):
+            errors.append(f"Search line {line_number} returned results but reviewed no references")
         records.append((line_number, record))
     if not records:
         errors.append("Structured search log must contain at least one record")
+    if len(record_ids) != len(set(record_ids)):
+        errors.append("Search record IDs must be unique")
     return errors, records
 
 
@@ -856,6 +924,7 @@ def _validate_claims_stage(path: Path, structure_path: Path | None = None) -> li
         return errors
     text = path.read_text(encoding="utf-8")
     errors.extend(validate_claims_cn(text))
+    errors.extend(validate_no_internal_prose_inside_claim_body(text))
     if structure_path is not None:
         errors.extend(_validate_claim_structure(text, structure_path))
     return errors
@@ -866,14 +935,14 @@ def _validate_claim_structure(text: str, structure_path: Path) -> list[str]:
         structure = _load_json(structure_path, "Claims V2 structure")
     except ValueError as exc:
         return [str(exc)]
+    errors = validate_schema(structure, "claims-v2-structure.schema.json")
     entries = structure.get("independent_claims")
     if not isinstance(entries, list) or not entries:
-        return ["Claims V2 structure must contain independent_claims"]
+        return errors + ["Claims V2 structure must contain independent_claims"]
 
     blocks = parse_claim_blocks(text)
     independent_numbers = independent_claim_numbers(text)
     parsed: dict[str, list[str]] = {}
-    errors: list[str] = []
     for number in sorted(independent_numbers):
         claim_id = f"I{number}"
         labels, label_errors = _parse_independent_limitation_lines(number, blocks[number])
@@ -917,6 +986,37 @@ def _validate_claim_structure(text: str, structure_path: Path) -> list[str]:
             errors.append(
                 f"{claim_id} parser limitation IDs must exactly match the structured limitation IDs"
             )
+
+    dependencies = claim_dependencies(text)
+    dependent_entries = structure.get("dependent_claims", [])
+    parsed_dependent: dict[str, list[str]] = {}
+    for number, refs in sorted(dependencies.items()):
+        claim_id = f"D{number}"
+        labels, label_errors = _parse_dependent_limitation_lines(number, blocks[number])
+        parsed_dependent[claim_id] = labels
+        errors.extend(label_errors)
+        entry = next(
+            (
+                item
+                for item in dependent_entries
+                if isinstance(item, dict) and item.get("claim_id") == claim_id
+            ),
+            None,
+        )
+        if entry is None:
+            errors.append(f"Claims V2 structure is missing dependent claim {claim_id}")
+            continue
+        if entry.get("claim_number") != number or entry.get("depends_on") != refs:
+            errors.append(f"Dependent claim {claim_id} has inconsistent dependency metadata")
+        if entry.get("added_limitation_ids") != labels:
+            errors.append(
+                f"{claim_id} parser limitation IDs must exactly match added_limitation_ids"
+            )
+    structured_dependent_ids = {
+        item.get("claim_id") for item in dependent_entries if isinstance(item, dict)
+    }
+    if structured_dependent_ids != set(parsed_dependent):
+        errors.append("Claims V2 structure must cover exactly all dependent claims")
     return errors
 
 
@@ -972,53 +1072,74 @@ def _parse_independent_limitation_lines(
     return labels, errors
 
 
+def _parse_dependent_limitation_lines(
+    claim_number: int, lines: list[str]
+) -> tuple[list[str], list[str]]:
+    claim_id = f"D{claim_number}"
+    labels: list[str] = []
+    errors: list[str] = []
+    for line_index, line in enumerate(lines):
+        line_labels = TRACE_LABEL_RE.findall(line)
+        if line_index == 0:
+            if line_labels:
+                errors.append(
+                    f"Dependent claim {claim_number} must place its preamble before limitations"
+                )
+            if len(lines) == 1 or not line.rstrip().endswith(("：", ":")):
+                errors.append(f"Dependent claim {claim_number} preamble must end with a colon")
+            continue
+        if len(line_labels) != 1 or not TRACE_LINE_RE.match(line):
+            errors.append(f"Dependent claim {claim_number} must label every added limitation line")
+            continue
+        label = line_labels[0]
+        if not label.startswith(f"{claim_id}-L"):
+            errors.append(f"Trace label {label} does not belong to dependent claim {claim_number}")
+        labels.append(label)
+    expected = [f"{claim_id}-L{index}" for index in range(1, len(labels) + 1)]
+    if labels != expected:
+        errors.append(f"Dependent claim {claim_number} trace labels must be consecutive")
+    if not labels:
+        errors.append(f"Dependent claim {claim_number} has no trace-labelled added limitations")
+    return labels, errors
+
+
 def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
-    path = case_dir / "09-claim-support-map.md"
-    table_errors = _validate_table(path, 1)
-    if table_errors:
-        return table_errors
-    structure_path = case_dir / "08-claims-v2-structure.json"
     try:
-        structure = _load_json(structure_path, "Claims V2 structure")
+        support = _load_json(case_dir / "09-claim-support-map.json", "claim support map")
+        structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+        evidence = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
     except ValueError as exc:
         return [str(exc)]
-    labels = {
+    expected = {
         limitation_id
         for entry in structure.get("independent_claims", [])
         if isinstance(entry, dict)
         for limitation_id in entry.get("limitation_ids", [])
     }
-    errors = []
-    if not labels:
-        errors.append("Claims V2 must label every independent-claim limitation with [I<n>-L<n>]")
-    mapped_labels: set[str] = set()
-    for row_number, cells in enumerate(_markdown_data_rows(path), 1):
-        if len(cells) < 5 or any(not cell.strip() for cell in cells[:5]):
-            errors.append(
-                f"Claim support row {row_number} must map limitation, engineering source, "
-                "specification support, technical effect, and status"
-            )
-            continue
-        if cells[4].strip().lower() in {"unsupported", "unresolved", "待支持", "待确认", "不支持"}:
-            errors.append(f"Claim support row {row_number} remains unsupported or unresolved")
-        row_labels = re.findall(r"I\d+-L\d+", cells[0])
-        if len(row_labels) != 1:
-            errors.append(f"Claim support row {row_number} must map exactly one limitation ID")
-            continue
-        label = row_labels[0]
-        if label in mapped_labels:
-            errors.append(f"Claim support limitation {label} is mapped more than once")
-        if label not in labels:
-            errors.append(f"Claim support row {row_number} maps unknown limitation {label}")
-        mapped_labels.add(label)
-    missing_labels = sorted(labels - mapped_labels)
-    if missing_labels:
+    expected.update(
+        limitation_id
+        for entry in structure.get("dependent_claims", [])
+        if isinstance(entry, dict)
+        for limitation_id in entry.get("added_limitation_ids", [])
+    )
+    errors = validate_schema(support, "claim-support-map.schema.json")
+    evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    mapped: list[str] = []
+    for item in support.get("limitations", []):
+        limitation_id = item.get("limitation_id", "")
+        mapped.append(limitation_id)
+        if item.get("claim_id") != limitation_id.split("-L", 1)[0]:
+            errors.append(f"Claim support {limitation_id} has inconsistent claim_id")
+        if set(item.get("engineering_evidence_ids", [])) - evidence_ids:
+            errors.append(f"Claim support {limitation_id} references unknown evidence")
+    if len(mapped) != len(set(mapped)):
+        errors.append("Claim support limitation IDs must be unique")
+    if set(mapped) != expected:
         errors.append(
-            "Claim support map is missing independent-claim limitations: "
-            + ", ".join(missing_labels)
+            "Claim support map must cover exactly all independent and dependent limitations"
         )
-    if len(_markdown_data_rows(path)) != len(labels):
-        errors.append("Claim support row count must equal the structured limitation count")
+    if not errors:
+        _render_claim_support_map(case_dir, support)
     return errors
 
 
@@ -1027,8 +1148,21 @@ def _validate_final_search(case_dir: Path, _: dict[str, Any]) -> list[str]:
     errors, records = _read_search_records(path, FINAL_SEARCH_FIELDS)
     try:
         structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+        session = _load_json(path / "search-session.json", "final search session")
     except ValueError as exc:
         return errors + [str(exc)]
+    errors.extend(validate_schema(session, "final-search-session.schema.json"))
+    status = _load_status(case_dir)
+    if session.get("revision") != status.get("revision", 0):
+        errors.append("Final search session is stale against the current case revision")
+    expected_source = {
+        "claims_v2_sha256": _sha256_file(case_dir / "08-claims-v2.md"),
+        "claims_v2_structure_sha256": _sha256_file(case_dir / "08-claims-v2-structure.json"),
+    }
+    if session.get("source") != expected_source:
+        errors.append("Final search is stale against current Claims V2")
+    if not session.get("completed_at"):
+        errors.append("Final search session has not been marked completed")
 
     claims: dict[str, set[str]] = {}
     distinguishing: set[str] = set()
@@ -1090,13 +1224,13 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
     specification_path = application / "specification-final.md"
     abstract_path = application / "abstract.md"
     drawings_path = application / "drawings-description.md"
+    figures_path = application / "figures.json"
     metadata_path = application / "application-metadata.json"
     errors: list[str] = []
     for path in (
         claims_path,
         specification_path,
         abstract_path,
-        drawings_path,
         metadata_path,
     ):
         if not path.exists():
@@ -1106,28 +1240,40 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
 
     claims_v2 = (case_dir / "08-claims-v2.md").read_text(encoding="utf-8")
     claims_final = claims_path.read_text(encoding="utf-8")
-    expected_claims = TRACE_LABEL_RE.sub("", claims_v2)
+    try:
+        expected_claims = render_filing_claims(claims_v2)
+    except ValueError as exc:
+        errors.append(f"Claims V2 cannot be rendered for filing: {exc}")
+        expected_claims = ""
     if claims_final != expected_claims:
         errors.append(
-            "claims-final.md must be generated exactly from Claims V2 without trace labels"
+            "claims-final.md must exactly match the canonical filing rendering of Claims V2"
         )
     if TRACE_LABEL_RE.search(claims_final):
         errors.append("claims-final.md still contains internal trace labels")
     errors.extend(validate_claims_cn(claims_final))
+    forbidden_markers = (
+        "# Claims V2",
+        "内部追踪",
+        "待同步",
+        "待确认",
+        "[I1-",
+        "[D1-",
+    )
+    for marker in forbidden_markers:
+        if marker in claims_final:
+            errors.append(f"claims-final.md contains forbidden filing marker: {marker}")
 
     specification = specification_path.read_text(encoding="utf-8")
     abstract = abstract_path.read_text(encoding="utf-8")
-    drawings = drawings_path.read_text(encoding="utf-8")
+    drawings = drawings_path.read_text(encoding="utf-8") if drawings_path.exists() else ""
     for name, content in (
         ("specification-final.md", specification),
         ("abstract.md", abstract),
-        ("drawings-description.md", drawings),
     ):
         if "【待" in content or "待同步" in content:
             errors.append(f"{name} still contains pending application-draft content")
     errors.extend(validate_abstract_cn(abstract))
-    if not _meaningful_markdown(drawings):
-        errors.append("drawings-description.md has no substantive content")
     if not _meaningful_markdown(specification):
         errors.append("specification-final.md has no substantive content")
 
@@ -1137,6 +1283,22 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         return errors + [str(exc)]
     errors.extend(validate_schema(metadata, "application-metadata.schema.json"))
+    drawing_decision = metadata.get("drawings", {})
+    if "【待" in str(drawing_decision.get("reason", "")):
+        errors.append("Application drawings decision is still pending")
+    if drawing_decision.get("abstract_figure_required") and not drawing_decision.get("required"):
+        errors.append(
+            "An abstract figure cannot be required when specification drawings are absent"
+        )
+    errors.extend(
+        _validate_figures(
+            case_dir,
+            figures_path,
+            drawing_decision,
+            drawings,
+            structure,
+        )
+    )
     expected_hashes = {
         "source_claims_v2_sha256": _sha256_text(claims_v2),
         "claims_final_sha256": _sha256_text(claims_final),
@@ -1154,6 +1316,12 @@ def _validate_application_draft(case_dir: Path, _: dict[str, Any]) -> list[str]:
         if isinstance(entry, dict)
         for limitation_id in entry.get("limitation_ids", [])
     }
+    expected_ids.update(
+        limitation_id
+        for entry in structure.get("dependent_claims", [])
+        if isinstance(entry, dict)
+        for limitation_id in entry.get("added_limitation_ids", [])
+    )
     sync_entries = metadata.get("limitation_sync")
     if not isinstance(sync_entries, list):
         errors.append("Application metadata limitation_sync must be a list")
@@ -1193,6 +1361,13 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         return [str(exc)]
     errors = validate_schema(audit, "final-audit.schema.json")
+    try:
+        application_snapshot = _application_hash_snapshot(case_dir)
+    except (OSError, ValueError) as exc:
+        errors.append(str(exc))
+    else:
+        if audit.get("audited_application") != application_snapshot:
+            errors.append("Final audit is stale against the current application draft")
     claim_ids = {entry.get("claim_id") for entry in structure.get("independent_claims", [])}
     limitation_ids = {
         limitation
@@ -1252,7 +1427,146 @@ def _validate_content_ready(case_dir: Path, _: dict[str, Any]) -> list[str]:
 
 
 def _validate_independent_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
-    return _validate_draft(case_dir / "filing-package" / "huang-audit" / "independent-audit.md")
+    directory = case_dir / "filing-package" / "huang-audit"
+    try:
+        audit = _load_json(directory / "independent-audit.json", "independent audit")
+        structure = _load_json(case_dir / "08-claims-v2-structure.json", "Claims V2 structure")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(audit, "independent-audit.schema.json")
+    if audit.get("source_application") != _application_hash_snapshot(case_dir):
+        errors.append("Independent audit is stale against the current application")
+    if audit.get("source_final_audit_sha256") != _sha256_file(case_dir / "13-final-audit.json"):
+        errors.append("Independent audit is stale against the current final audit")
+    known_revisions = {
+        item.get("revision_id") for item in _load_status(case_dir).get("revision_history", [])
+    }
+    claim_numbers = {
+        item.get("claim_number")
+        for key in ("independent_claims", "dependent_claims")
+        for item in structure.get(key, [])
+    }
+    limitation_ids = {
+        limitation
+        for key in ("independent_claims", "dependent_claims")
+        for item in structure.get(key, [])
+        for limitation in item.get("limitation_ids", item.get("added_limitation_ids", []))
+    }
+    finding_ids: list[str] = []
+    attorney_risk = False
+    for finding in audit.get("findings", []):
+        finding_id = finding.get("finding_id", "unknown")
+        finding_ids.append(finding_id)
+        disposition = finding.get("disposition")
+        severity = finding.get("severity")
+        if set(finding.get("affected_claims", [])) - claim_numbers:
+            errors.append(f"{finding_id} references unknown claims")
+        if set(finding.get("affected_limitation_ids", [])) - limitation_ids:
+            errors.append(f"{finding_id} references unknown limitations")
+        if disposition == "revision_required":
+            errors.append(f"{finding_id} requires a canonical revision before DOCX rendering")
+        if severity == "blocking" and disposition != "resolved_by_revision":
+            errors.append(f"Blocking finding {finding_id} must be resolved by revision")
+        if disposition in {"rejected_with_reason", "no_change_needed", "attorney_review_required"}:
+            if not str(finding.get("resolution") or "").strip():
+                errors.append(f"{finding_id} disposition requires a written resolution")
+        if disposition == "resolved_by_revision":
+            if finding.get("revision_id") not in known_revisions:
+                errors.append(f"{finding_id} references an unknown canonical revision")
+            if not str(finding.get("resolution") or "").strip():
+                errors.append(f"{finding_id} resolved revision requires an explanation")
+        if disposition == "attorney_review_required":
+            attorney_risk = True
+    if len(finding_ids) != len(set(finding_ids)):
+        errors.append("Independent audit finding IDs must be unique")
+    expected_status = "RESOLVED_WITH_ATTORNEY_REVIEW" if attorney_risk else "RESOLVED"
+    if audit.get("overall_status") != expected_status:
+        errors.append(f"Independent audit overall_status must be {expected_status}")
+    if not errors:
+        _render_independent_audit(directory, audit)
+    return errors
+
+
+def required_docx_subjects(case_dir: Path) -> tuple[str, ...]:
+    metadata = _load_json(
+        case_dir / "12-application" / "application-metadata.json", "application metadata"
+    )
+    drawings = metadata.get("drawings")
+    if not isinstance(drawings, dict):
+        raise ValueError("Application metadata lacks a drawings decision")
+    subjects = list(BASE_REQUIRED_DOCX_SUBJECTS)
+    if drawings.get("required"):
+        subjects.append("说明书附图")
+    if drawings.get("abstract_figure_required"):
+        subjects.append("摘要附图")
+    return tuple(subjects)
+
+
+def _validate_figures(
+    case_dir: Path,
+    manifest_path: Path,
+    decision: dict[str, Any],
+    drawings_description: str,
+    structure: dict[str, Any],
+) -> list[str]:
+    try:
+        manifest = _load_json(manifest_path, "figure manifest")
+        evidence_map = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(manifest, "figure-manifest.schema.json")
+    required = decision.get("required") is True
+    if manifest.get("figures_required") is not required:
+        errors.append("Figure manifest must match the application drawings decision")
+    figures = manifest.get("figures", [])
+    if not required:
+        if figures or manifest.get("abstract_figure_id") is not None:
+            errors.append("No-drawings application must have an empty figure manifest")
+        if (
+            decision.get("abstract_figure_required")
+            or decision.get("abstract_figure_id") is not None
+        ):
+            errors.append("No-drawings application cannot designate an abstract figure")
+        return errors
+    if not drawings_description or not _meaningful_markdown(drawings_description):
+        errors.append("Drawings-required application needs a substantive drawings description")
+    if not figures:
+        errors.append("Drawings-required application needs at least one canonical figure")
+
+    evidence_ids = {item.get("evidence_id") for item in evidence_map.get("evidence", [])}
+    limitation_ids = {
+        limitation
+        for key in ("independent_claims", "dependent_claims")
+        for entry in structure.get(key, [])
+        for limitation in entry.get("limitation_ids", entry.get("added_limitation_ids", []))
+    }
+    figure_ids: set[str] = set()
+    for figure in figures:
+        figure_id = figure.get("figure_id")
+        if figure_id in figure_ids:
+            errors.append(f"Duplicate figure ID: {figure_id}")
+        figure_ids.add(figure_id)
+        unknown_evidence = set(figure.get("source_evidence_ids", [])) - evidence_ids
+        if unknown_evidence:
+            errors.append(f"Figure {figure_id} references unknown engineering evidence")
+        unknown_limitations = set(figure.get("claim_limitation_ids", [])) - limitation_ids
+        if unknown_limitations:
+            errors.append(f"Figure {figure_id} references unknown claim limitations")
+        relative = Path(str(figure.get("file", "")))
+        file_path = case_dir / "12-application" / relative
+        if not file_path.exists() or not file_path.is_file():
+            errors.append(f"Figure file is missing: {relative}")
+        elif hashlib.sha256(file_path.read_bytes()).hexdigest() != figure.get("sha256"):
+            errors.append(f"Figure file hash is stale: {figure_id}")
+    abstract_id = manifest.get("abstract_figure_id")
+    if decision.get("abstract_figure_required"):
+        if not abstract_id or abstract_id not in figure_ids:
+            errors.append("Required abstract figure must identify a canonical figure")
+        if decision.get("abstract_figure_id") != abstract_id:
+            errors.append("Application metadata and figure manifest disagree on abstract figure")
+    elif abstract_id is not None or decision.get("abstract_figure_id") is not None:
+        errors.append("Abstract figure is designated although it is not required")
+    return errors
 
 
 def _validate_docx_package(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -1260,7 +1574,11 @@ def _validate_docx_package(case_dir: Path, _: dict[str, Any]) -> list[str]:
     documents = list(path.glob("*.docx")) if path.exists() else []
     errors: list[str] = []
     used_documents: set[Path] = set()
-    for subject in sorted(REQUIRED_DOCX_SUBJECTS, key=len, reverse=True):
+    try:
+        subjects = required_docx_subjects(case_dir)
+    except ValueError as exc:
+        return [str(exc)]
+    for subject in sorted(subjects, key=len, reverse=True):
         matches = sorted(
             (
                 document
@@ -1393,6 +1711,10 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _meaningful_markdown(text: str) -> list[str]:
     return [
         line
@@ -1499,6 +1821,34 @@ def _render_feature_matrix(case_dir: Path, data: dict[str, Any]) -> None:
     (case_dir / "04-feature-matrix.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _render_claim_support_map(case_dir: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 权利要求支持映射",
+        "",
+        "> 本文件由 09-claim-support-map.json 自动生成；请只编辑 JSON 事实源。",
+        "",
+        "| 限定 | 权利要求 | 工程证据 | 说明书明确支持 | 技术效果 | 状态 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for item in data.get("limitations", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("limitation_id", ""),
+                    item.get("claim_id", ""),
+                    item.get("engineering_evidence_ids", []),
+                    item.get("specification_sections", []),
+                    item.get("technical_effect", ""),
+                    item.get("status", ""),
+                )
+            )
+            + " |"
+        )
+    (case_dir / "09-claim-support-map.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _render_context_questions(case_dir: Path, data: dict[str, Any]) -> None:
     lines = [
         "# 上下文确认记录",
@@ -1601,6 +1951,36 @@ def _render_final_audit(case_dir: Path, data: dict[str, Any]) -> None:
             ]
         )
     (case_dir / "13-final-audit.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _render_independent_audit(directory: Path, data: dict[str, Any]) -> None:
+    lines = [
+        "# 独立审稿与协调记录",
+        "",
+        "> 本文件由 independent-audit.json 自动生成；不得在 Markdown 中关闭 finding。",
+        "",
+        f"- 审计编号：{data.get('audit_id', '')}",
+        f"- 审稿工具：{data.get('auditor', {}).get('tool', '')}",
+        f"- 总体状态：{data.get('overall_status', '')}",
+        "",
+    ]
+    for finding in data.get("findings", []):
+        lines.extend(
+            [
+                f"## {finding.get('finding_id', '')} — {finding.get('severity', '')}",
+                "",
+                f"- 类别：{finding.get('category', '')}",
+                f"- 影响权利要求：{_markdown_cell(finding.get('affected_claims', []))}",
+                f"- 影响限定：{_markdown_cell(finding.get('affected_limitation_ids', []))}",
+                f"- 发现：{finding.get('finding', '')}",
+                f"- 建议：{finding.get('recommendation', '')}",
+                f"- 处置：{finding.get('disposition', '')}",
+                f"- 协调说明：{finding.get('resolution') or ''}",
+                f"- 修订：{finding.get('revision_id') or ''}",
+                "",
+            ]
+        )
+    (directory / "independent-audit.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def _markdown_data_rows(path: Path) -> list[list[str]]:

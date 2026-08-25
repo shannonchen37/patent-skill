@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Structured Final Patent Audit",
   "type": "object",
-  "required": ["novelty", "inventive_step", "eligibility", "clarity_and_support", "enablement", "unity", "amendment_basis", "sensitive_information"],
+  "required": ["audited_application", "novelty", "inventive_step", "eligibility", "clarity_and_support", "enablement", "unity", "amendment_basis", "sensitive_information"],
   "$defs": {
     "status": {"enum": ["PASS", "RISK", "ATTORNEY_REVIEW_REQUIRED"]},
     "review": {"type": "object", "required": ["status", "conclusion", "evidence_refs", "residual_risk", "recommended_action"], "properties": {
@@ -12,6 +12,13 @@
     }, "additionalProperties": false}
   },
   "properties": {
+    "audited_application": {"type": "object", "required": ["revision", "claims_final_sha256", "specification_final_sha256", "abstract_sha256", "drawings_manifest_sha256"], "properties": {
+      "revision": {"type": "integer", "minimum": 0},
+      "claims_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "specification_final_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "abstract_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "drawings_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }, "additionalProperties": false},
     "novelty": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "object", "required": ["status", "closest_reference_ids", "single_reference_full_disclosure", "conclusion", "evidence_refs", "residual_risk", "recommended_action"], "properties": {
       "status": {"$ref": "#/$defs/status"}, "closest_reference_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
       "single_reference_full_disclosure": {"type": "boolean"}, "conclusion": {"type": "string", "minLength": 8},
