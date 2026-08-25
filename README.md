@@ -1,174 +1,184 @@
-# patent-skill
+# Patent Skill
 
-从真实研发代码、设计文档、测试和实验记录中提炼技术方案，主动找出证据缺口和矛盾，通过分阶段提问补齐上下文，再生成供发明人与中国专利专业人员复核的中国发明专利案件包。
+**从真实软件、AI 与算法项目中提取工程证据，生成可追溯的中国发明专利案件包。**
 
-`patent-skill` 是主流程和唯一案件事实源：
+Patent Skill 不是“把代码交给大模型，然后生成一篇专利”的工具。它先从真实代码和研发材料中恢复技术机制，再经过发明点筛选、现有技术检索、权利要求设计、说明书支持性追踪和结构化审计。
 
-- [yjmm10/patent-skills](https://github.com/yjmm10/patent-skills) 仅用于增强 CNIPA 查新；
-- [HuangXinzhe/cn-patent-drafting](https://github.com/HuangXinzhe/cn-patent-drafting) 仅用于最终独立审稿和分件 DOCX 输出；
-- 三套工具不会并行撰写，也不会互相覆盖案件事实。
+> Engineering evidence → Invention → Prior art → Claims → Specification → Support → Audit
 
-[GitHub 仓库](https://github.com/shannonchen37/patent-skill)
+[![CI](https://github.com/shannonchen37/patent-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/shannonchen37/patent-skill/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 正确流程
+## Why Patent Skill?
 
-Skill 不会收到代码后立即端到端生成专利。代码不能代替完整的技术交底；凡是会影响发明点、区别特征或权利要求范围的不确定内容，都需要用户确认。
+普通的一次性生成通常是：
 
 ```text
-上传或指定真实代码
-→ 询问拟用专利名称（没有则回复“无”）
-→ 冻结证据版本（Git commit、上传 ZIP 或确定性目录清单）
-→ 提取代码证据，指出“已证明/推断/缺失/矛盾”
-→ 询问最关键的技术缺口并等待回答
-→ 挖掘 3–5 个候选发明
-→ 对候选发明做第一次查新（Shannon 主分析，yjmm10 可选增强 CNIPA）
-→ 检索后排序；明显最优则继续，存在战略歧义时由用户确认主方向/拆案
-→ 展示最接近现有技术和拟采用的区别特征，由用户确认
-→ Claims V1 → 中国权利要求结构校验 → 用户确认独权技术链
-→ 说明书 V1 → support-candidates → Claims V2 + 独权限定结构
-→ claim-support-map 覆盖独权限定和从权新增限定
-→ 每项独权组合及关键区别限定的第二次检索，并绑定 Claims V2 哈希
-→ 从正式权利要求块生成干净权利要求书，同步最终说明书、摘要及条件附图
-→ 结构化最终审计（逐项记录依据、剩余风险和处理意见）
-→ 内容达到 CONTENT_READY_FOR_ATTORNEY_REVIEW
-→ Huang 结构化独立审稿 → Shannon 逐 finding 协调或正式修订 → 成套 DOCX
-→ 中国专利代理师终审
+Source Code → LLM → Patent Draft
 ```
 
-每轮默认只问一个、最多三个问题，并解释该问题为什么会影响专利内容。不会要求用户操作内部阶段或理解候选编号。
+Patent Skill 使用证据优先、分阶段校验的路径：
 
-申请人、发明人、地址、权属等信息不是内容生成门槛，缺少时统一保留 `【待填写】`。
+```text
+Source Code
+    ↓
+Engineering Evidence
+    ↓
+Invention Candidates
+    ↓
+Prior-art Search
+    ↓
+Claims & Specification
+    ↓
+Support Trace & Final Search
+    ↓
+Audit & Attorney Review
+```
 
-专利名称只是用户意图和检索入口。名称相同不等于技术方案相同，名称不同也不代表不存在冲突；Skill 必须继续比较技术方案和权利要求。发现高度重合时，不得只换标题，而应寻找代码中真实存在的区别特征并重新检索；找不到时必须报告高重合风险。
+核心原则：
 
-由于数据库覆盖、索引延迟、未公开申请和检索误差，任何工具都不能保证“绝对不撞车”。本 Skill 输出有记录的检索范围、逐项特征对比和残余风险，不作零风险承诺。
+- **Evidence-first**：不能由代码、设计文档、测试、实验记录或用户确认支持的技术特征，不能凭空进入权利要求。
+- **Search-before-claims**：在确定保护中心前先检索候选发明，最终权利要求形成后再次检索。
+- **Claim traceability**：权利要求限定能够回溯到工程证据、说明书支持和对应技术效果。
+- **Stale-analysis protection**：权利要求或最终申请内容发生实质修改后，旧检索和旧审计不能静默继续使用。
 
-## 在 ChatGPT 中使用
+## Capabilities
 
-1. 在 GitHub 选择 **Code → Download ZIP**。
-2. 在 ChatGPT 中上传 `patent-skill` ZIP 完成 Skill 安装。
+| 能力 | 说明 |
+|---|---|
+| Engineering Evidence | 从源码、配置、测试和设计材料中恢复技术机制，而不是只依赖 README |
+| Invention Discovery | 从一个项目中挖掘多个候选发明，并筛选更值得保护的特征组合 |
+| Prior-art Search | 在确定保护中心前检索，并在最终权利要求形成后再次检索 |
+| Claims Engineering | 起草并校验中国发明专利独立权利要求与从属权利要求 |
+| Specification Drafting | 根据权利要求和工程证据组织说明书、摘要及必要附图 |
+| Support Traceability | 将权利要求限定关联到工程证据、说明书支持和技术效果 |
+| Revision Control | 出现新现有技术或审稿意见时正式回退，并使旧分析失效 |
+| Patent Audit | 检查新颖性、创造性、专利客体、支持性、充分公开和单一性等风险 |
+| Attorney Review Package | 输出供中国专利专业人员继续复核和修改的案件材料 |
+
+## Quick Start
+
+### ChatGPT
+
+1. 在 GitHub 选择 **Code → Download ZIP**，将本仓库 ZIP 作为 Skill 安装。
+2. 上传真正需要分析的研发项目代码 ZIP，而不是再次上传 Patent Skill 安装包。
 3. 发送：
 
 ```text
-使用 $patent-skill 开始生成中国发明专利。
+使用 $patent-skill 分析这个项目，
+从工程证据开始挖掘可以申请的中国发明专利。
 ```
 
-Skill 会主动要求上传待分析项目的代码 ZIP。`patent-skill` 安装包只是工具，绝不能作为待申请项目。
+Patent Skill 不会直接从代码跳到专利全文。它会先冻结项目快照、建立工程证据，并仅在缺失信息会影响技术方案或保护范围时向你提问。
 
-收到项目后，Skill 应首先询问：
-
-```text
-你是否已有拟申请的专利名称？有则直接提供；没有请回复“无”，我将根据代码挖掘核心发明并生成候选名称。
-```
-
-用户回答后，Skill 先扫描证据并提出第一轮关键问题。后续按“证据确认→候选检索与排序→必要时方向确认→现有技术差异确认→权利要求范围确认”逐步推进，不要求用户操作 `discover`、`analyze`、`draft` 或候选编号。
-
-## 在 Codex 中使用
+### Codex
 
 安装：
 
 ```bash
-git clone https://github.com/shannonchen37/patent-skill.git ~/.codex/skills/patent-skill
+git clone https://github.com/shannonchen37/patent-skill.git \
+  ~/.codex/skills/patent-skill
 ```
 
-更新：
+在 Codex 中打开真实项目仓库，或提供项目的准确路径，然后发送：
+
+```text
+使用 $patent-skill 分析当前项目，
+从代码证据开始生成中国发明专利案件。
+```
+
+Patent Skill 自身只是工具，永远不是待申请项目。更新已安装 Skill：
 
 ```bash
 git -C ~/.codex/skills/patent-skill pull
 ```
 
-在 Codex 中打开真实项目仓库，或提供准确路径，然后发送：
+## How It Works
 
 ```text
-使用 $patent-skill 根据当前项目生成中国发明专利内容包。
+真实研发项目
+    ↓
+工程证据与技术机制
+    ↓
+候选发明筛选
+    ↓
+第一次现有技术检索
+    ↓
+权利要求与说明书
+    ↓
+支持性追踪与最终检索
+    ↓
+最终申请内容与结构化审计
+    ↓
+专利代理师复核
 ```
 
-如果没有打开真实项目，Skill 会要求选择项目路径或上传代码。Skill 安装目录永远不是分析目标。
+Patent Skill 使用分阶段工作流，而不是一次性生成。只有会实质影响发明点、区别特征、技术效果或保护范围的不确定内容才会阻断推进；申请人、地址等表单信息可以稍后填写。
 
-## 输出
-
-```text
-patent-case/
-├── case-status.json
-├── context-questions.json
-├── context-ledger.md
-├── 00-project-snapshot/
-├── 01-code-evidence-map.json
-├── 01-code-evidence-map.md
-├── 02-invention-candidates.json
-├── 02-invention-candidates.md
-├── 02-candidate-ranking.json
-├── 03-prior-art-search/{shannon,yjmm10}/
-├── 04-feature-matrix.json
-├── 04-feature-matrix.md
-├── 05-claims-v1.md
-├── 06-specification-v1.md
-├── 07-support-candidates.md
-├── 08-claims-v2.md
-├── 08-claims-v2-structure.json
-├── 09-claim-support-map.json
-├── 09-claim-support-map.md
-├── 10-final-search/{search-session.json,search-records.jsonl,shannon,yjmm10}/
-├── 12-application/{claims-final,specification-final,abstract,drawings-description}.md
-├── 12-application/application-metadata.json
-├── 12-application/figures.json
-├── 12-application/figures/（仅有图案件）
-├── 13-final-audit.json
-├── 13-final-audit.md
-├── revisions/R001/
-└── filing-package/{huang-audit/independent-audit.json,docx}/
-```
-
-初始化案件目录：
+完整流程、校验 Gate 和正式修订规则见 [工作流文档](docs/workflow.md)。普通 Skill 用户不需要手动管理内部状态；CLI 主要用于开发、调试和工作流集成，可运行：
 
 ```bash
-python -m patent_skill.cli case init patent-case \
-  --project /absolute/path/to/project \
-  --title "可选的拟申请名称"
+python -m patent_skill.cli --help
 ```
 
-`--project` 可指向 Git/普通目录或 ZIP。初始化只记录快照类型、整体摘要、逐文件 SHA-256、可用的 Git 状态和安全警告，不复制源代码，也不会自动创建 commit/tag。后续阶段只能依次推进：
+## What You Get
 
-```bash
-python -m patent_skill.cli case advance patent-case EVIDENCE_MAP
-python -m patent_skill.cli case validate patent-case
-```
+| 最终材料 | 内容 |
+|---|---|
+| Patent Claims | 清除内部标记后的最终权利要求书 |
+| Specification | 与最终权利要求和工程证据同步的说明书 |
+| Abstract | 说明书摘要 |
+| Figures | 技术方案确有需要时生成的附图和附图说明 |
+| Prior-art Report | 检索记录、最接近现有技术和覆盖范围说明 |
+| Claim Support Map | 权利要求与工程证据、说明书支持及技术效果的对应关系 |
+| Patentability Audit | 新颖性、创造性、支持性和其他主要风险分析 |
+| Review Package | 供中国专利代理师进一步修改和确认的案件材料 |
 
-需要修订时使用正式回退，旧产物会归档且下游失效：
+Patent Skill 维护唯一的案件事实源，并记录证据、检索、修订和审计之间的关系。完整案件结构与实现机制见 [架构文档](docs/architecture.md)。
 
-```bash
-python -m patent_skill.cli case revise patent-case CLAIMS_V2 \
-  --reason "第二次检索发现新的重合文献"
-```
+## Scope
 
-技术问题只能携带答案来源逐项解决，不能用布尔开关跳过：
+**适合的项目**
 
-```bash
-python -m patent_skill.cli case resolve-question patent-case Q003 \
-  --answer "反馈发生在任务分配前" --source developer-confirmed
-```
+软件系统、AI/机器学习、算法系统、后端基础设施、调度、缓存、数据库、网络、数据处理，以及其他能够通过代码、设计文档、测试或实验记录提供工程证据的项目。
 
-内容完成后导出代理师复核包：
+**不适合的场景**
 
-```bash
-python -m patent_skill.cli case export patent-case --output attorney-review-package
-```
+- 只有抽象想法，没有可实施技术方案或研发材料；
+- 要求模型虚构实验结果、实现细节或区别特征；
+- 要求工具保证专利授权，或替代专利代理师作出最终法律判断。
 
-结构化产物以 JSON 为唯一事实源，Markdown 自动生成。最终权利要求书只保留正式编号权利要求，不包含标题注释、内部追踪标签或待办标记。独权限定必须进入支持、申请同步和最终检索；从权新增限定必须进入支持与申请同步。附图由案件明确决定：无图案件不强制说明书附图/摘要附图；有图案件的节点、限定、工程证据和文件哈希必须可追踪。Final Search、Final Audit 和 Independent Audit 均绑定所审版本的哈希，旧分析不能静默复用。
+## Optional Integrations
 
-输出不得虚构技术事实、实验数据、专利文献或区别特征，也不得标记为可直接提交。最终申请文本应由中国专利专业人员复核。
+Patent Skill 的核心工作流可以独立运行。以下项目仅提供可选增强：
 
-## 安全边界
+- **CNIPA search** — [yjmm10/patent-skills](https://github.com/yjmm10/patent-skills)：增强国知局检索；检索材料返回 Patent Skill 的案件记录。
+- **Independent drafting review** — [HuangXinzhe/cn-patent-drafting](https://github.com/HuangXinzhe/cn-patent-drafting)：用于最终独立撰写审查和 DOCX 输出，不得覆盖既有工程证据、权利要求或案件状态。
 
-- 不要上传未经授权的公司机密、客户数据、密钥或受限制代码。
-- 只分析用户明确指定的真实项目。
-- 不以改名、替换术语或更换权利要求类别规避现有技术。
-- 外部 Skill 不得覆盖 Shannon 的 evidence map、候选发明、Claims 或案件状态。
-- 本项目不提交专利申请，也不自动作出授权保证。
+这些工具不是三个并行的专利生成器。Patent Skill 始终维护唯一的案件事实源。
 
-## 相关文件
+## Safety & Limitations
 
-- [Skill 主入口](SKILL.md)
-- [完整工作流](docs/workflow.md)
-- [安全政策](SECURITY.md)
-- [MIT License](LICENSE)
+- 不要上传未经授权的公司机密、客户数据、账号凭据或密钥。
+- 不虚构技术事实、实验数据、专利文献或区别特征。
+- 不通过修改标题、替换术语或更换权利要求类别规避真实现有技术。
+- 输出用于中国专利专业人员复核，不构成授权保证或法律意见。
+
+任何检索都可能受到数据库覆盖、索引延迟、未公开申请和检索表达的限制。Patent Skill 会记录检索范围和残余风险，但不能承诺“绝对不撞车”。更多信息见 [安全政策](SECURITY.md)。
+
+## Documentation
+
+- [SKILL.md](SKILL.md) — Agent 执行规则和交互契约
+- [完整工作流](docs/workflow.md) — 专利流程、Gate 与 revision 规则
+- [架构说明](docs/architecture.md) — 案件事实源、Schema、证据链和外部集成
+- [安全政策](SECURITY.md) — 代码、敏感信息和负责任披露
+- [贡献指南](CONTRIBUTING.md) — 开发、测试和贡献方式
+
+## Contributing
+
+欢迎提交 Issue 和 Pull Request。开始前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，并确保测试与静态检查通过。
+
+## License
+
+本项目采用 [MIT License](LICENSE)。
