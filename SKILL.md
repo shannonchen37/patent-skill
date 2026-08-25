@@ -5,7 +5,7 @@ description: Progressively guide the user from real R&D project code to a Chines
 
 # Patent Skill
 
-Turn R&D evidence into traceable, reviewable patent drafting assets through progressive user confirmation. Never represent an output as legal advice or filing-ready.
+Turn traceable R&D sources into reviewable patent drafting assets through progressive user confirmation. Code is the strongest engineering evidence, but it is not the only lawful technical-disclosure source. Never represent an output as legal advice or filing-ready.
 
 ## Progressive interaction contract
 
@@ -13,9 +13,9 @@ Do not run the workflow end to end in one uninterrupted pass. Code is evidence, 
 
 Maintain a context ledger with four states:
 
-- `CONFIRMED_BY_USER`: explicitly confirmed by the user;
-- `SUPPORTED_BY_CODE`: directly supported by identified project evidence;
-- `INFERRED_NEEDS_CONFIRMATION`: plausible but capable of changing the protected scope;
+- `SUPPORTED_BY_ENGINEERING_EVIDENCE`: supported by frozen code, document, test, or experiment material (`E###`);
+- `CONFIRMED_TECHNICAL_DISCLOSURE`: explicitly confirmed and enablement-reviewed technical disclosure (`TD###`);
+- `PROPOSED_FOR_CONFIRMATION`: Agent candidate completion that is not a case fact;
 - `CONTRADICTED_OR_MISSING`: contradicted by the supplied title/materials or absent from the evidence.
 
 Ask one focused question by default and never more than three questions in one turn. For each question, briefly state:
@@ -27,6 +27,24 @@ Ask one focused question by default and never more than three questions in one t
 Do not ask the user to understand internal stages, candidate IDs, legal jargon, or state names. Translate each uncertainty into a concrete technical question with examples where useful.
 
 Pause instead of assuming when an answer could materially change the technical problem, necessary technical features, feature interaction, technical effect, claim scope, novelty position, enablement, or choice among multiple inventions. Record disclosure history and contributor questions separately; they do not block technical-content work unless the known facts directly affect novelty, entitlement, or the present decision.
+
+## Missing mechanism recovery
+
+When a material link is absent from engineering evidence, do not merely report the gap and stop. Determine whether it is present elsewhere in project material, a developer/inventor-confirmed design not yet implemented, only a possible future idea, or nonexistent.
+
+Before asking about a missing material mechanism, provide exactly one concise candidate completion using:
+
+`[confirmed input/state] → [proposed mechanism] → [resulting data/state] → [direct technical effect]`
+
+The candidate completion is a discussion hypothesis only. Store it only in `context-questions.json`; never treat it as implemented, `E###`, inventor-confirmed, claim support, figure provenance, specification fact, or prior-art conclusion. It may propose topology and causality, but must not invent thresholds, label semantics, conflict priority, timing, model architecture, numeric parameters, benchmark results, or quantified gains.
+
+Classify the answer as `candidate_confirmed`, `candidate_modified`, `candidate_rejected`, or `unknown`:
+
+- confirmed/modified: create `TD###`, then check input, processing object and steps, state change, output, module integration, necessary rules, conflicts/exceptions, and effect basis;
+- rejected: create no TD, mark the link unsupported, and mine the remaining project evidence;
+- unknown: create no TD; keep it blocking only if it controls the main invention, otherwise continue with other candidates.
+
+Only an active TD with `enablement.status = sufficient` may support a substantive limitation. A confirmed but incomplete TD requires another focused question. Never store developer confirmation as engineering evidence.
 
 ## Project intake and upload guidance
 
@@ -92,6 +110,7 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 
 - Never invent technical facts, metrics, prior art, patent numbers, inventors, ownership, or disclosure dates.
 - Do not move directly from source code to claims.
+- Treat Evidence-first as traceable-source-first: `E###` is frozen engineering material; `TD###` is a confirmed, sufficiently disclosed technical design; a candidate completion or Agent inference is never approved provenance.
 - Do not block technical drafting on applicant, inventor, address, ownership, or filing-form data. Use `【待填写】` and collect them after the patent-content package exists.
 - Keep engineering provenance, specification support, prior-art disclosure, and priority basis separate.
 - Do not combine references to conclude lack of novelty.
@@ -104,21 +123,21 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 
 1. Complete project/title intake and initialize the canonical case.
 2. **Snapshot gate:** inspect code, docs, configuration, tests, benchmarks, issues/decisions, and necessary Git history. Record the accepted snapshot type and hashes without drafting. Detect and exclude secrets, customer data, production addresses, unrelated trade secrets, third-party source, dependencies, and build artifacts. Record project dates, disclosure history, and contributors as filing-context questions that may remain pending unless they change the current technical or novelty judgment.
-3. Build canonical `01-code-evidence-map.json` as `code evidence -> processing step -> data/state change -> technical effect`; validate each source path/hash against the frozen snapshot and auto-render `01-code-evidence-map.md`. Never maintain Markdown as a second fact source. Reconstruct end-to-end runtime chains, not class/API inventories.
-4. **Evidence gate:** report proven, inferred, missing, and contradicted facts. Ask the highest-impact technical question and wait. Write no claims.
-5. Mine 3–5 candidates into canonical `02-invention-candidates.json`, cross-reference every evidence ID, and auto-render its Markdown view. For each record technical problem, mechanism, distinguishing feature combination, effect, evidence and main risk.
+3. Build canonical `01-code-evidence-map.json` as `engineering evidence -> processing step -> data/state change -> technical effect`; validate each source path/hash against the frozen snapshot and auto-render its Markdown. Keep user-confirmed designs separately in `01-technical-disclosures.json`; never disguise them as file-backed evidence.
+4. **Evidence gate:** report supported, proposed, missing, and contradicted facts. Apply Missing mechanism recovery. A promoted TD must pass the enablement gate before downstream use. Ask the highest-impact technical question and wait. Write no claims.
+5. Mine 3–5 candidates into canonical `02-invention-candidates.json`. Separate `engineering_evidence_ids` from `technical_disclosure_ids`; every candidate requires at least one `E###` project anchor, while individual features may rely on approved TD. Record the problem, mechanism, distinguishing combination, effect basis and main risk.
 6. Run the first prior-art search for all viable candidates before selecting the main invention. Search each problem, mechanism, feature combination, synonyms, broad/narrow expressions, and IPC/CPC. Write structured `search-records.jsonl` entries containing database, date, query, candidate ID, result count, reviewed references, verified URLs, and coverage limitations. Shannon owns the conclusions; yjmm10 is only an optional search adapter.
 7. Rank the candidates after search and record `02-candidate-ranking.json`. If one candidate is clearly superior, select it and continue without a ceremonial confirmation. If scores are close, several applications are justified, or the choice depends on business strategy, explain the alternatives and wait for explicit user confirmation. Check unity and propose separate applications where candidates lack one common special technical feature.
-8. Compare 3–10 closest references in canonical `04-feature-matrix.json`, cross-reference engineering evidence, and auto-render its Markdown view. Do not mosaic references for novelty.
+8. Compare 3–10 closest references in canonical `04-feature-matrix.json`, cross-reference approved E/TD provenance by type, and auto-render its Markdown view. Do not mosaic references for novelty.
 9. **Overlap gate:** show the closest overlap and proposed code-supported distinction. Ask the user only about an implementation/effect that remains materially uncertain. If no defensible distinction remains, mark `HIGH_OVERLAP_RISK` and return to another candidate or stop.
-10. Draft `05-claims-v1.md`: method independent claim first, layered dependent fallbacks, then supported system/device/medium/program-product categories. Every limitation must trace to the evidence map. Before advancing, run the Chinese claim validator for consecutive numbering, backward-only dependency, alternative multiple dependency, prohibited multiple-to-multiple dependency, and terminal punctuation.
+10. Draft `05-claims-v1.md`: method independent claim first, layered dependent fallbacks, then supported system/device/medium/program-product categories. Every material limitation must trace to `E###` or an enablement-sufficient `TD###`; each independent claim must retain at least one `E###` project anchor. Before advancing, run the Chinese claim validator.
 11. **Claim-scope gate:** show the independent-claim feature chain in plain language and wait for approval.
 12. Draft `06-specification-v1.md` around Claims V1, including alternatives, parameter ranges, data structures, module interaction, failure paths, deployment variants, and AI model input/output/training details where necessary. Read [patent-eligibility-cn.md](references/patent-eligibility-cn.md), [claim-drafting-cn.md](references/claim-drafting-cn.md), and [specification-cn.md](references/specification-cn.md).
 13. Build `07-support-candidates.md`, then draft Claims V2. Label every independent limitation `[I<n>-L<n>]` and every dependent claim's added limitation `[D<n>-L<n>]`; mirror claims, dependencies, added limitations, and fallback priority in `08-claims-v2-structure.json`. Internal Markdown may precede claims but must never appear after formal claims begin.
-14. Build canonical `09-claim-support-map.json` and its generated Markdown view. Require exact coverage of every independent limitation and dependent added limitation, with engineering evidence, explicit specification support, technical effect, and supported status.
+14. Build canonical `09-claim-support-map.json` and its generated Markdown view. Require exact coverage of every independent limitation and dependent added limitation, with separate E/TD provenance, explicit specification support, technical effect, effect basis, and supported status. Candidate completions and incomplete/superseded TDs are forbidden.
 15. Run the second feature-level search under `10-final-search/`. Bind `search-session.json` to the current revision and exact Claims V2/structure hashes. Schema-validate each record. Require a full-combination query for every independent claim and coverage for every distinguishing independent limitation; high-priority dependent fallbacks may be searched additionally.
-16. Enter `APPLICATION_DRAFT`. Render `claims-final.md` from numbered claim blocks, removing all internal metadata and trace labels. Synchronize every independent and dependent limitation. Explicitly decide whether drawings are necessary. For a drawings case, maintain evidence-bound `figures.json` and hashed figure files; for a no-drawings case, keep the manifest empty and do not require drawing DOCX files.
-17. Write canonical `13-final-audit.json`, binding it to the exact application revision and hashes. Cover novelty for every independent claim and every distinguishing limitation in inventive-step analysis; record evidence, conclusion, residual risk, and action.
+16. Enter `APPLICATION_DRAFT`. Render `claims-final.md` from numbered claim blocks, removing all internal metadata and trace labels. Synchronize every limitation. Explicitly decide whether drawings are necessary. Figures may cite separate E/approved-TD provenance; a no-drawings case keeps the manifest empty.
+17. Write canonical `13-final-audit.json`, binding it to the exact application revision and hashes. Cover novelty and inventive step, and explicitly list every claim-used TD whose design is not fully implemented in the frozen project.
 18. Compute readiness directly from `context-questions.json`. Any unresolved blocking technical question prevents `CONTENT_READY_FOR_ATTORNEY_REVIEW`; resolve it only with an answer and provenance through `case resolve-question`. Filing-context questions may remain pending.
 19. Hand read-only copies to Huang for `INDEPENDENT_AUDIT`. Record findings canonically in `independent-audit.json`, bound to the application and final-audit hashes. A blocking finding requires a known formal revision; rejected/no-change findings require reasons; attorney-only risks remain explicit. Only a reconciled audit permits DOCX rendering.
 
@@ -126,12 +145,16 @@ External tools are reviewers or search adapters, never co-authors of the canonic
 
 Run evidence extraction, mining, search, Claims V1, specification, Claims V2, and review as internal stages. Do not require the user to operate `discover`, `analyze`, `draft`, candidate IDs, or state labels.
 
-At every user-facing pause, state four things concisely:
+At every material user-facing pause, state concisely:
 
-1. current stage;
-2. confirmed findings;
-3. the single most important unresolved point;
-4. what will happen after the user answers.
+1. current progress in plain language, without internal state enums;
+2. the most important confirmed facts;
+3. the single material gap or uncertainty;
+4. exactly one candidate completion when the gap is a missing technical mechanism;
+5. exactly what the user should provide next;
+6. what the Skill will do automatically after the answer.
+
+During normal use, never ask the user to run CLI commands, edit JSON, resolve internal IDs, choose stage names, or manipulate canonical files. Say plainly: `你现在只需要回答上面的技术问题。`
 
 Never silently convert an uncertainty into a claim limitation. Never treat user silence as confirmation. If the user explicitly requests a complete draft in one turn, still stop at any material uncertainty gate; speed does not authorize fabrication. If no material uncertainty exists at a gate, state that briefly and advance without asking a ceremonial question.
 
@@ -149,6 +172,8 @@ patent-case/
 ├── 00-project-snapshot/
 ├── 01-code-evidence-map.json
 ├── 01-code-evidence-map.md
+├── 01-technical-disclosures.json
+├── 01-technical-disclosures.md
 ├── 02-invention-candidates.json
 ├── 02-invention-candidates.md
 ├── 02-candidate-ranking.json

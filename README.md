@@ -48,6 +48,7 @@ Audit & Attorney Review
 | 能力 | 说明 |
 |---|---|
 | Engineering Evidence | 从源码、配置、测试和设计材料中恢复技术机制，而不是只依赖 README |
+| Inventor Disclosure | 将尚未编码、但经发明人或开发者确认且达到充分公开要求的技术设计，与代码证据严格区分后纳入方案 |
 | Invention Discovery | 从一个项目中挖掘多个候选发明，并筛选更值得保护的特征组合 |
 | Prior-art Search | 在确定保护中心前检索，并在最终权利要求形成后再次检索 |
 | Claims Engineering | 起草并校验中国发明专利独立权利要求与从属权利要求 |
