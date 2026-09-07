@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Patent Engineering Iterations",
+  "type": "object",
+  "required": ["baseline_snapshot", "current_snapshot", "engineering_iterations"],
+  "properties": {
+    "baseline_snapshot": {"type": "string", "pattern": "^S[0-9]{3,}$"},
+    "current_snapshot": {"type": "string", "pattern": "^S[0-9]{3,}$"},
+    "engineering_iterations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "iteration_id", "proposal_id", "from_snapshot", "to_snapshot", "reason",
+          "authorization_source", "test_results", "changed_files", "new_evidence_ids",
+          "validation_status", "status", "recorded_at", "origin_provenance"
+        ],
+        "properties": {
+          "iteration_id": {"type": "string", "pattern": "^IT[0-9]{3,}$"},
+          "proposal_id": {"type": "string", "pattern": "^SP[0-9]{3,}$"},
+          "from_snapshot": {"type": "string", "pattern": "^S[0-9]{3,}$"},
+          "to_snapshot": {"type": "string", "pattern": "^S[0-9]{3,}$"},
+          "reason": {"type": "string", "minLength": 4},
+          "authorization_source": {"type": "string", "minLength": 4},
+          "test_results": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "command", "passed", "output_summary"],
+              "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "command": {"type": "string", "minLength": 1},
+                "passed": {"type": "boolean"},
+                "output_summary": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          },
+          "changed_files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "new_evidence_ids": {"type": "array", "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
+          "validation_status": {"enum": ["passed", "failed", "other_sufficient"]},
+          "status": {"enum": ["validated", "validation_failed"]},
+          "origin_provenance": {
+            "type": "object",
+            "required": ["origin_type", "human_contributions", "source", "inventorship_review_required"],
+            "properties": {
+              "origin_type": {"enum": ["human_implemented", "agent_implemented", "jointly_implemented"]},
+              "human_contributions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["contributor_ref", "contribution", "source"],
+                  "properties": {
+                    "contributor_ref": {"type": "string", "minLength": 1},
+                    "contribution": {"type": "string", "minLength": 4},
+                    "source": {"type": "string", "minLength": 2}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "source": {"type": "string", "minLength": 2},
+              "inventorship_review_required": {"const": true}
+            },
+            "additionalProperties": false
+          },
+          "recorded_at": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

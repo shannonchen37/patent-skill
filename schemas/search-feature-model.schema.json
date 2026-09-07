@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Search Feature Model",
+  "type": "object",
+  "required": ["features", "combination_hypotheses"],
+  "$defs": {
+    "terms": {
+      "type": "object",
+      "required": ["problem", "mechanism", "synonyms", "broader", "narrower", "ipc_cpc"],
+      "properties": {
+        "problem": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 2}},
+        "mechanism": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 2}},
+        "synonyms": {"type": "array", "items": {"type": "string", "minLength": 2}},
+        "broader": {"type": "array", "items": {"type": "string", "minLength": 2}},
+        "narrower": {"type": "array", "items": {"type": "string", "minLength": 2}},
+        "ipc_cpc": {"type": "array", "items": {"type": "string", "minLength": 2}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "features": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "feature_id", "statement", "technical_role", "engineering_evidence_ids",
+          "technical_disclosure_ids", "search_terms"
+        ],
+        "properties": {
+          "feature_id": {"type": "string", "pattern": "^F[0-9]{3,}$"},
+          "statement": {"type": "string", "minLength": 4},
+          "technical_role": {"type": "string", "minLength": 4},
+          "engineering_evidence_ids": {
+            "type": "array", "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}
+          },
+          "technical_disclosure_ids": {
+            "type": "array", "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}
+          },
+          "search_terms": {"$ref": "#/$defs/terms"}
+        },
+        "anyOf": [
+          {"properties": {"engineering_evidence_ids": {"minItems": 1}}},
+          {"properties": {"technical_disclosure_ids": {"minItems": 1}}}
+        ],
+        "additionalProperties": false
+      }
+    },
+    "combination_hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["combination_id", "feature_ids", "reason"],
+        "properties": {
+          "combination_id": {"type": "string", "pattern": "^FC[0-9]{3,}$"},
+          "feature_ids": {
+            "type": "array", "minItems": 2, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^F[0-9]{3,}$"}
+          },
+          "reason": {"type": "string", "minLength": 4}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

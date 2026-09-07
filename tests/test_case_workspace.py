@@ -12,26 +12,34 @@ from patent_skill.case_workspace import (
     _application_hash_snapshot,
     _validate_claims_stage,
     _validate_docx_file,
+    _validate_evidence_map,
     _validate_figures,
     _validate_final_audit,
     _validate_final_search,
     _validate_independent_audit,
+    _validate_patent_engineering,
     _validate_support_map,
     advance_stage,
+    authorize_engineering_commit,
+    authorize_engineering_implementation,
     export_case_package,
     init_case_workspace,
+    record_engineering_iteration,
     required_docx_subjects,
     resolve_case_question,
+    resolve_engineering_proposal,
     revise_case_stage,
     validate_case_workspace,
+    validate_engineering_iteration,
 )
+from patent_skill.schema_validation import validate_schema
 
 
 def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _search_record(candidate: str = "P001") -> str:
+def _search_record(candidate: str = "P001", scope: str = "candidate_targeted") -> str:
     return (
         json.dumps(
             {
@@ -40,6 +48,7 @@ def _search_record(candidate: str = "P001") -> str:
                 "search_date": "2026-08-24",
                 "query": "状态反馈 调度",
                 "candidate_id": candidate,
+                "search_scope": scope,
                 "result_count": 3,
                 "reviewed_reference_ids": ["CN123"],
                 "verified_urls": ["https://example.test/CN123"],
@@ -157,6 +166,98 @@ def _complete_evidence(case: Path) -> None:
             ensure_ascii=False,
         ),
     )
+    technical_model = {
+        "technical_problem": {
+            "statement": "降低任务处理等待时延",
+            "engineering_evidence_ids": ["E001"],
+        },
+        "system_boundary": {
+            "statement": "任务状态处理与资源分配模块",
+            "engineering_evidence_ids": ["E001"],
+        },
+        "inputs": [{"statement": "待处理任务状态", "engineering_evidence_ids": ["E001"]}],
+        "outputs": [{"statement": "完成状态与资源分配结果", "engineering_evidence_ids": ["E001"]}],
+        "core_modules": [{"statement": "状态反馈模块", "engineering_evidence_ids": ["E001"]}],
+        "processing_chains": [
+            {"statement": "任务状态到反馈式资源分配", "engineering_evidence_ids": ["E001"]}
+        ],
+        "data_state_transitions": [
+            {"statement": "等待状态更新为完成状态", "engineering_evidence_ids": ["E001"]}
+        ],
+        "technical_effects": [
+            {"statement": "降低任务处理等待时延", "engineering_evidence_ids": ["E001"]}
+        ],
+        "core_mechanisms": [
+            {
+                "statement": "基于状态反馈动态调整资源",
+                "reason": "直接改变任务分配状态",
+                "engineering_evidence_ids": ["E001"],
+            }
+        ],
+        "ordinary_components": [
+            {
+                "statement": "Python 函数调用",
+                "reason": "属于通用语言机制",
+                "engineering_evidence_ids": ["E001"],
+            }
+        ],
+        "business_ui_components": [],
+        "third_party_dependencies": [],
+        "uncertainties": [],
+    }
+    _write(
+        case / "project-understanding" / "technical-model.json",
+        json.dumps(technical_model, ensure_ascii=False),
+    )
+    feature_model = {
+        "features": [
+            {
+                "feature_id": "F001",
+                "statement": "基于状态反馈动态调整资源",
+                "technical_role": "连接任务状态与资源分配",
+                "engineering_evidence_ids": ["E001"],
+                "technical_disclosure_ids": [],
+                "search_terms": {
+                    "problem": ["任务等待时延"],
+                    "mechanism": ["状态反馈资源分配"],
+                    "synonyms": ["反馈调度"],
+                    "broader": ["资源调度"],
+                    "narrower": ["任务状态反馈调度"],
+                    "ipc_cpc": ["G06F9/50"],
+                },
+            }
+        ],
+        "combination_hypotheses": [],
+    }
+    _write(
+        case / "project-understanding" / "search-feature-model.json",
+        json.dumps(feature_model, ensure_ascii=False),
+    )
+    landscape_record = json.loads(_search_record("LANDSCAPE", "landscape_feature"))
+    landscape_record.update({"record_id": "S900", "feature_ids": ["F001"]})
+    landscape_record.pop("candidate_id")
+    _write(
+        case / "landscape-search" / "search-records.jsonl",
+        json.dumps(landscape_record, ensure_ascii=False) + "\n",
+    )
+    _write(
+        case / "landscape-search" / "prior-art-feature-matrix.json",
+        json.dumps(
+            {
+                "features": [
+                    {
+                        "feature_id": "F001",
+                        "search_record_ids": ["S900"],
+                        "references": {"CN123": "partial"},
+                        "crowding": "medium",
+                        "opportunity_note": "反馈组合仍需进行候选级检索",
+                    }
+                ],
+                "landscape_conclusion": "单一反馈机制较常见，应检索具体组合",
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 def _complete_candidates(case: Path) -> None:
@@ -173,6 +274,9 @@ def _complete_candidates(case: Path) -> None:
                 "effect_basis": "mechanism-derived",
                 "engineering_evidence_ids": ["E001"],
                 "technical_disclosure_ids": [],
+                "source_feature_ids": ["F001"],
+                "landscape_search_record_ids": ["S900"],
+                "implementation_gap": None,
                 "risk": "medium",
             }
         )
@@ -202,6 +306,216 @@ def _complete_matrix(case: Path) -> None:
             ensure_ascii=False,
         ),
     )
+
+
+def _ranking_item(candidate_id: str, disposition: str = "reserve") -> dict:
+    return {
+        "candidate_id": candidate_id,
+        "prior_art_crowding": "medium",
+        "distinguishing_combination": "状态反馈与动态资源分配组合",
+        "technical_effect": "降低任务排队等待时延",
+        "engineering_support": "strong",
+        "td_support": "none",
+        "implementation_completeness": "complete",
+        "design_around_risk": "medium",
+        "protection_breadth": "moderate",
+        "requires_patent_engineering": False,
+        "implementation_gap": None,
+        "split_application_recommended": False,
+        "targeted_search_record_ids": [candidate_id.replace("P", "S")],
+        "disposition": disposition,
+    }
+
+
+def _engineering_disclosure() -> dict:
+    return {
+        "disclosure_id": "TD001",
+        "question_id": "Q003",
+        "statement": "在状态反馈后应用用户确认的阈值再执行资源分配",
+        "source_role": "developer",
+        "implementation_status": "designed_not_implemented",
+        "mechanism": {
+            "input": "任务状态",
+            "processing": ["计算状态指标", "按阈值选择资源分配路径"],
+            "state_change": "待分配状态变为带有资源路径的状态",
+            "output": "资源分配结果",
+            "integration": "在现有状态反馈模块与资源分配模块之间执行",
+            "conflict_and_exception_handling": "阈值冲突时采用保守路径并记录原因",
+        },
+        "technical_effect": {
+            "statement": "减少不适配资源分配造成的等待",
+            "effect_basis": "mechanism-derived",
+            "evidence_refs": [],
+        },
+        "enablement": {"status": "sufficient", "missing_details": []},
+        "confirmed_via": "user_response",
+        "confirmed_at": "2026-09-07T00:00:00+00:00",
+        "lifecycle_status": "active",
+        "superseded_by": None,
+        "origin_provenance": {
+            "origin_type": "agent_proposal_adopted",
+            "human_contributions": [
+                {
+                    "contributor_ref": "USER_UNRESOLVED",
+                    "contribution": "确认采用该机制",
+                    "source": "user-response",
+                }
+            ],
+            "source": "SP001 + user-response",
+            "inventorship_review_required": True,
+        },
+    }
+
+
+def _engineering_proposal(*, screened: bool = True, overlap: str = "low") -> dict:
+    return {
+        "proposal_id": "SP001",
+        "candidate_id": "P001",
+        "design_gap_question_id": "Q003",
+        "status": "screened" if screened else "proposed",
+        "problem": "当前反馈机制缺少可实施的资源选择规则",
+        "summary": "在状态反馈与资源分配之间加入阈值选择机制",
+        "inputs": ["任务状态"],
+        "data_representation": ["状态指标与阈值记录"],
+        "processing_steps": ["计算状态指标", "比较阈值", "选择资源路径"],
+        "decision_rules": ["指标超过阈值时使用低负载资源"],
+        "state_changes": ["待分配状态转为已选择资源路径状态"],
+        "outputs": ["资源路径选择结果"],
+        "boundary_handling": ["指标缺失时使用保守路径"],
+        "conflict_handling": ["多路径冲突时选择负载最低路径"],
+        "integration_points": ["状态反馈模块与资源分配模块之间"],
+        "technical_effect": "减少不适配资源分配造成的等待",
+        "parameters": [
+            {
+                "name": "load_threshold",
+                "value": 0.8,
+                "provenance": "PROPOSED_DEFAULT",
+                "rationale": "用于形成可讨论的参考实现，不视为项目事实",
+            }
+        ],
+        "source_feature_ids": ["F001"],
+        "engineering_evidence_ids": ["E001"],
+        "technical_disclosure_ids": [],
+        "screening": {
+            "status": "completed" if screened else "pending",
+            "search_record_ids": ["S901"] if screened else [],
+            "overlap_risk": overlap if screened else "unknown",
+            "conclusion": "未发现完整公开该组合" if overlap != "high" else "关键组合高度重合",
+            "patent_distinction_eligible": screened and overlap != "high",
+        },
+        "user_decision": {"decision": "pending", "source": None, "decided_at": None},
+        "implementation": {
+            "authorized": False,
+            "authorization_source": None,
+            "authorization_purpose": None,
+            "status": "not_requested",
+        },
+        "commit_authorization": {
+            "authorized": False,
+            "authorization_source": None,
+            "status": "not_requested",
+            "commit_sha": None,
+        },
+        "origin_provenance": {
+            "origin_type": "agent_proposed",
+            "human_contributions": [],
+            "source": "patent-skill analysis",
+            "inventorship_review_required": True,
+        },
+        "redesign_of": None,
+        "redesign_basis": None,
+        "redesign_change_type": None,
+    }
+
+
+def _prepare_engineering_case(
+    tmp_path: Path, *, screened: bool = True, overlap: str = "low"
+) -> tuple[Path, Path]:
+    project = tmp_path / "engineering-project"
+    project.mkdir()
+    (project / "core.py").write_text("def allocate(state):\n    return state\n", encoding="utf-8")
+    case = tmp_path / "engineering-case"
+    init_case_workspace(case, project)
+    advance_stage(case, "EVIDENCE_MAP")
+    _complete_evidence(case)
+    questions_path = case / "context-questions.json"
+    questions = json.loads(questions_path.read_text(encoding="utf-8"))
+    questions["questions"].append(
+        {
+            "id": "Q003",
+            "category": "technical",
+            "question": "是否采用阈值式资源选择机制？",
+            "gap_type": "DESIGN_GAP",
+            "blocking": True,
+            "impact": "决定候选方案能否形成可实施的完整机制",
+            "status": "open",
+            "resolution": None,
+            "evidence_refs": ["E001"],
+            "source": None,
+            "candidate_completion": {
+                "statement": "在状态反馈后按阈值选择资源路径",
+                "basis_refs": ["E001"],
+                "status": "proposed",
+            },
+            "resulting_disclosure_ids": [],
+        }
+    )
+    _write(questions_path, json.dumps(questions, ensure_ascii=False))
+    advance_stage(case, "INVENTION_CANDIDATES")
+    _complete_candidates(case)
+    candidates_path = case / "02-invention-candidates.json"
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    candidates["candidates"][0]["implementation_gap"] = "缺少阈值式资源选择规则"
+    _write(candidates_path, json.dumps(candidates, ensure_ascii=False))
+    advance_stage(case, "FIRST_SEARCH")
+    records = "".join(_search_record(candidate) for candidate in ("P001", "P002", "P003"))
+    if screened:
+        proposal_search = json.loads(_search_record("P001").strip())
+        proposal_search.update(
+            {
+                "record_id": "S901",
+                "proposal_id": "SP001",
+                "search_scope": "engineering_proposal",
+            }
+        )
+        records += json.dumps(proposal_search, ensure_ascii=False) + "\n"
+    _write(case / "03-prior-art-search" / "search-records.jsonl", records)
+    advance_stage(case, "CANDIDATE_RANKING")
+    rankings = [_ranking_item("P001", "selected"), _ranking_item("P002"), _ranking_item("P003")]
+    rankings[0].update(
+        {
+            "requires_patent_engineering": True,
+            "implementation_completeness": "missing",
+            "implementation_gap": "缺少阈值式资源选择规则",
+        }
+    )
+    _write(
+        case / "02-candidate-ranking.json",
+        json.dumps(
+            {
+                "ranked_candidates": rankings,
+                "selected_candidate_id": "P001",
+                "strategic_ambiguity": False,
+                "human_confirmation_required": False,
+                "human_confirmation": "",
+                "selection_reason": "补全设计后具有更清楚的技术机制",
+            },
+            ensure_ascii=False,
+        ),
+    )
+    advance_stage(case, "FEATURE_MATRIX")
+    _complete_matrix(case)
+    _write(
+        case / "patent-engineering" / "proposals.json",
+        json.dumps(
+            {
+                "case_revision": 0,
+                "proposals": [_engineering_proposal(screened=screened, overlap=overlap)],
+            },
+            ensure_ascii=False,
+        ),
+    )
+    return case, project
 
 
 def _complete_final_audit(case: Path) -> None:
@@ -250,6 +564,17 @@ def _complete_final_audit(case: Path) -> None:
         "amendment_basis": dict(review),
         "sensitive_information": dict(review),
         "unimplemented_disclosures": [],
+        "provenance_summary": {
+            "frozen_implementation_limitations": ["I1-L1"],
+            "td_only_limitations": [],
+            "patent_engineering_limitations": [],
+        },
+        "inventorship_review": {
+            "review_required": True,
+            "skill_determination": "NOT_DETERMINED",
+            "source_ids": [],
+            "note": "需由专利专业人员结合实际人员贡献单独审查发明人资格",
+        },
     }
     _write(case / "13-final-audit.json", json.dumps(audit, ensure_ascii=False))
 
@@ -386,8 +711,9 @@ def test_stage_transition_is_sequential_and_candidate_confirmation_is_conditiona
     ranking.update(
         {
             "ranked_candidates": [
-                {"candidate_id": "P001", "score": 8},
-                {"candidate_id": "P002", "score": 7.9},
+                _ranking_item("P001", "selected"),
+                _ranking_item("P002"),
+                _ranking_item("P003"),
             ],
             "selected_candidate_id": "P001",
             "strategic_ambiguity": True,
@@ -421,7 +747,11 @@ def test_golden_case_revision_export_and_docx_gates(tmp_path: Path) -> None:
         case / "02-candidate-ranking.json",
         json.dumps(
             {
-                "ranked_candidates": ["P001", "P002", "P003"],
+                "ranked_candidates": [
+                    _ranking_item("P001", "selected"),
+                    _ranking_item("P002"),
+                    _ranking_item("P003"),
+                ],
                 "selected_candidate_id": "P001",
                 "strategic_ambiguity": False,
                 "human_confirmation_required": False,
@@ -1071,3 +1401,511 @@ def test_figure_manifest_rejects_unproven_semantics_and_missing_file(tmp_path: P
     )
     assert any("unknown engineering evidence" in error for error in errors)
     assert any("Figure file is missing" in error for error in errors)
+
+
+def test_patent_engineering_requires_screening_and_limits_high_overlap_purpose(
+    tmp_path: Path,
+) -> None:
+    case, _ = _prepare_engineering_case(tmp_path, screened=False)
+    with pytest.raises(ValueError, match="screened before user decision"):
+        resolve_engineering_proposal(
+            case,
+            "SP001",
+            "adopt",
+            "同意采用",
+            "user-response",
+            technical_disclosure=_engineering_disclosure(),
+        )
+
+    other = tmp_path / "overlap"
+    other.mkdir()
+    case, project = _prepare_engineering_case(other, overlap="high")
+    proposal = resolve_engineering_proposal(
+        case,
+        "SP001",
+        "adopt",
+        "因真实工程价值采用，但不作为专利区别特征",
+        "user-response",
+        technical_disclosure=_engineering_disclosure(),
+    )
+    assert proposal["screening"]["patent_distinction_eligible"] is False
+    with pytest.raises(ValueError, match="real engineering value"):
+        authorize_engineering_implementation(
+            case,
+            "SP001",
+            "explicit-user-authorization",
+            purpose="patent_distinction",
+        )
+    proposal = authorize_engineering_implementation(
+        case,
+        "SP001",
+        "explicit-user-authorization",
+        purpose="real_engineering_value",
+    )
+    assert proposal["implementation"]["authorized"] is True
+    core = project / "core.py"
+    core.write_text(
+        "def allocate(state, load):\n    return 'stable' if load > 0.8 else state\n",
+        encoding="utf-8",
+    )
+    iteration = record_engineering_iteration(
+        case,
+        project,
+        "SP001",
+        authorization_source="explicit-user-authorization",
+        reason="即使不考虑专利也能改善资源稳定性",
+        changed_files=["core.py"],
+        test_results=[
+            {"name": "unit", "command": "pytest", "passed": True, "output_summary": "通过"}
+        ],
+        new_evidence=[
+            {
+                "evidence_id": "E002",
+                "source": {
+                    "path": "core.py",
+                    "sha256": hashlib.sha256(core.read_bytes()).hexdigest(),
+                },
+                "processing_step": "按负载状态选择稳定资源路径",
+                "state_change": "待分配状态变为稳定资源路径状态",
+                "technical_effect": "改善资源分配稳定性",
+                "effect_basis": "mechanism-derived",
+                "status": "code-supported",
+            }
+        ],
+        origin_provenance={
+            "origin_type": "agent_implemented",
+            "human_contributions": [],
+            "source": "explicit real-engineering-value authorization",
+            "inventorship_review_required": True,
+        },
+    )
+    assert iteration["iteration"]["status"] == "validated"
+    evidence = json.loads((case / "01-code-evidence-map.json").read_text())
+    assert evidence["evidence"][0]["novelty_distinction_eligible"] is False
+    _write(
+        case / "08-claims-v2-structure.json",
+        json.dumps(
+            {
+                "independent_claims": [
+                    {
+                        "claim_id": "I1",
+                        "claim_number": 1,
+                        "limitation_ids": ["I1-L1"],
+                        "distinguishing_limitation_ids": ["I1-L1"],
+                    }
+                ],
+                "dependent_claims": [],
+            }
+        ),
+    )
+    _write(
+        case / "09-claim-support-map.json",
+        json.dumps(
+            {
+                "limitations": [
+                    {
+                        "limitation_id": "I1-L1",
+                        "claim_id": "I1",
+                        "engineering_evidence_ids": ["E002"],
+                        "technical_disclosure_ids": ["TD001"],
+                        "specification_sections": ["实施例1"],
+                        "technical_effect": "改善资源分配稳定性",
+                        "effect_basis": "mechanism-derived",
+                        "status": "supported",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+    )
+    assert any(
+        "novelty/inventive-step distinction" in error for error in _validate_support_map(case, {})
+    )
+
+
+def test_sp_proposed_default_is_valid_but_sp_cannot_be_claim_support() -> None:
+    proposals = {"case_revision": 0, "proposals": [_engineering_proposal()]}
+    assert validate_schema(proposals, "patent-engineering-proposals.schema.json") == []
+    invalid_support = {
+        "limitations": [
+            {
+                "limitation_id": "I1-L1",
+                "claim_id": "I1",
+                "engineering_evidence_ids": ["SP001"],
+                "technical_disclosure_ids": [],
+                "specification_sections": ["实施例1"],
+                "technical_effect": "降低处理等待时延",
+                "effect_basis": "mechanism-derived",
+                "status": "supported",
+            }
+        ]
+    }
+    assert validate_schema(invalid_support, "claim-support-map.schema.json")
+
+
+def test_high_overlap_allows_one_searched_substantive_redesign(tmp_path: Path) -> None:
+    case, _ = _prepare_engineering_case(tmp_path, overlap="high")
+    proposals_path = case / "patent-engineering" / "proposals.json"
+    proposals = json.loads(proposals_path.read_text())
+    redesign = json.loads(json.dumps(proposals["proposals"][0]))
+    redesign.update(
+        {
+            "proposal_id": "SP002",
+            "status": "screened",
+            "summary": "改用状态窗口趋势与资源稳定度联合选择资源路径",
+            "processing_steps": ["构造状态窗口", "计算趋势", "联合稳定度选择资源路径"],
+            "decision_rules": ["趋势恶化且稳定度下降时切换资源路径"],
+            "screening": {
+                "status": "completed",
+                "search_record_ids": ["S902"],
+                "overlap_risk": "low",
+                "conclusion": "实质性因果机制未见完整公开",
+                "patent_distinction_eligible": True,
+            },
+            "redesign_of": "SP001",
+            "redesign_basis": "由单阈值判断改为时间窗口趋势和资源稳定度的联合状态机制",
+            "redesign_change_type": "substantive_mechanism",
+        }
+    )
+    proposals["proposals"].append(redesign)
+    _write(proposals_path, json.dumps(proposals, ensure_ascii=False))
+    search_path = case / "03-prior-art-search" / "search-records.jsonl"
+    search = json.loads(_search_record("P001").strip())
+    search.update(
+        {
+            "record_id": "S902",
+            "proposal_id": "SP002",
+            "search_scope": "engineering_proposal",
+        }
+    )
+    search_path.write_text(
+        search_path.read_text() + json.dumps(search, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    assert not any("redesign" in error.lower() for error in _validate_patent_engineering(case))
+
+    second = json.loads(json.dumps(redesign))
+    second["proposal_id"] = "SP003"
+    second["screening"]["search_record_ids"] = ["S903"]
+    proposals["proposals"].append(second)
+    _write(proposals_path, json.dumps(proposals, ensure_ascii=False))
+    search["record_id"] = "S903"
+    search["proposal_id"] = "SP003"
+    search_path.write_text(
+        search_path.read_text() + json.dumps(search, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    assert any(
+        "only one substantive redesign" in error for error in _validate_patent_engineering(case)
+    )
+
+
+def test_modified_patent_engineering_promotes_td_and_preserves_user_parameter(
+    tmp_path: Path,
+) -> None:
+    case, _ = _prepare_engineering_case(tmp_path)
+    proposal = resolve_engineering_proposal(
+        case,
+        "SP001",
+        "modify",
+        "采用，但阈值改为 0.65",
+        "user-response",
+        technical_disclosure=_engineering_disclosure(),
+        modified_parameters={"load_threshold": 0.65},
+    )
+    assert proposal["status"] == "modified"
+    assert proposal["technical_disclosure_ids"] == ["TD001"]
+    assert proposal["parameters"][0]["value"] == 0.65
+    assert proposal["parameters"][0]["provenance"] == "USER_CONFIRMED"
+    disclosures = json.loads((case / "01-technical-disclosures.json").read_text())
+    assert [item["disclosure_id"] for item in disclosures["disclosures"]] == ["TD001"]
+    assert disclosures["disclosures"][0]["parameters"][0]["value"] == 0.65
+    assert disclosures["disclosures"][0]["parameters"][0]["provenance"] == "USER_CONFIRMED"
+    assert proposal["implementation"]["authorized"] is False
+    assert proposal["commit_authorization"]["authorized"] is False
+
+    authorized = authorize_engineering_implementation(
+        case,
+        "SP001",
+        "separate-implementation-approval",
+        purpose="patent_distinction",
+    )
+    assert authorized["implementation"]["authorized"] is True
+    assert authorized["commit_authorization"]["authorized"] is False
+    committed = authorize_engineering_commit(case, "SP001", "separate-commit-approval")
+    assert committed["commit_authorization"]["authorized"] is True
+
+
+def test_rejected_patent_engineering_does_not_create_td(tmp_path: Path) -> None:
+    case, _ = _prepare_engineering_case(tmp_path)
+    proposal = resolve_engineering_proposal(
+        case,
+        "SP001",
+        "reject",
+        "不采用该参考实现",
+        "user-response",
+    )
+    assert proposal["status"] == "rejected"
+    assert proposal["technical_disclosure_ids"] == []
+    disclosures = json.loads((case / "01-technical-disclosures.json").read_text())
+    assert disclosures["disclosures"] == []
+
+    other = tmp_path / "uncertain"
+    other.mkdir()
+    case, _ = _prepare_engineering_case(other)
+    proposal = resolve_engineering_proposal(
+        case,
+        "SP001",
+        "uncertain",
+        "暂时无法确认是否采用",
+        "user-response",
+    )
+    assert proposal["status"] == "uncertain"
+    disclosures = json.loads((case / "01-technical-disclosures.json").read_text())
+    assert disclosures["disclosures"] == []
+
+
+def test_patent_engineering_iteration_freezes_failed_validation_as_nonvalidated_evidence(
+    tmp_path: Path,
+) -> None:
+    case, project = _prepare_engineering_case(tmp_path)
+    resolve_engineering_proposal(
+        case,
+        "SP001",
+        "adopt",
+        "同意采用并实施",
+        "user-response",
+        technical_disclosure=_engineering_disclosure(),
+    )
+    authorize_engineering_implementation(
+        case,
+        "SP001",
+        "separate-implementation-approval",
+        purpose="patent_distinction",
+    )
+
+    core = project / "core.py"
+    core.write_text(
+        "def allocate(state, load):\n    return 'low-load' if load > 0.8 else state\n",
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(core.read_bytes()).hexdigest()
+    result = record_engineering_iteration(
+        case,
+        project,
+        "SP001",
+        authorization_source="separate-implementation-approval",
+        reason="实现经确认的参考方案",
+        changed_files=["core.py"],
+        test_results=[
+            {"name": "unit", "command": "pytest", "passed": False, "output_summary": "失败"}
+        ],
+        new_evidence=[
+            {
+                "evidence_id": "E002",
+                "source": {"path": "core.py", "sha256": digest},
+                "processing_step": "根据负载阈值选择资源路径",
+                "state_change": "任务状态变为带资源路径的状态",
+                "technical_effect": "减少不适配资源分配造成的等待",
+                "effect_basis": "mechanism-derived",
+                "status": "code-supported",
+            }
+        ],
+        origin_provenance={
+            "origin_type": "agent_implemented",
+            "human_contributions": [],
+            "source": "authorized Codex implementation",
+            "inventorship_review_required": True,
+        },
+    )
+    assert result["snapshot_id"] == "S002"
+    assert (case / "00-project-snapshot" / "snapshots" / "S001" / "snapshot-manifest.json").exists()
+    assert (case / "00-project-snapshot" / "snapshots" / "S002" / "snapshot-manifest.json").exists()
+    assert result["status"]["current_stage"] == "EVIDENCE_MAP"
+    assert (case / "revisions" / "R001" / "artifacts" / "02-invention-candidates.json").exists()
+    evidence = json.loads((case / "01-code-evidence-map.json").read_text())
+    assert [item["evidence_id"] for item in evidence["evidence"]] == ["E002"]
+    assert evidence["evidence"][0]["validation_status"] == "failed"
+    assert evidence["evidence"][0]["snapshot_id"] == "S002"
+    assert evidence["evidence"][0]["engineering_iteration_id"] == "IT001"
+    assert evidence["evidence"][0]["proposal_id"] == "SP001"
+    assert result["iteration"]["status"] == "validation_failed"
+    validated = validate_engineering_iteration(
+        case,
+        "IT001",
+        [
+            {
+                "name": "rerun-unit",
+                "command": "pytest",
+                "passed": True,
+                "output_summary": "修复验证环境后通过",
+            }
+        ],
+    )
+    assert validated["status"] == "validated"
+    evidence = json.loads((case / "01-code-evidence-map.json").read_text())
+    assert evidence["evidence"][0]["validation_status"] == "passed"
+    evidence["evidence"][0]["proposal_id"] = "SP999"
+    _write(
+        case / "01-code-evidence-map.json",
+        json.dumps(evidence, ensure_ascii=False),
+    )
+    assert any("inconsistent lineage" in error for error in _validate_evidence_map(case, {}))
+
+
+def test_validated_patent_engineering_iteration_reaches_claims_v1(tmp_path: Path) -> None:
+    case, project = _prepare_engineering_case(tmp_path)
+    resolve_engineering_proposal(
+        case,
+        "SP001",
+        "adopt",
+        "同意采用该工程方案",
+        "user-response",
+        technical_disclosure=_engineering_disclosure(),
+    )
+    authorize_engineering_implementation(
+        case,
+        "SP001",
+        "separate-implementation-approval",
+        purpose="patent_distinction",
+    )
+    core = project / "core.py"
+    core.write_text(
+        "def allocate(state, load):\n    return 'low-load' if load > 0.8 else state\n",
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(core.read_bytes()).hexdigest()
+    result = record_engineering_iteration(
+        case,
+        project,
+        "SP001",
+        authorization_source="separate-implementation-approval",
+        reason="实现经确认的参考方案",
+        changed_files=["core.py"],
+        test_results=[
+            {"name": "unit", "command": "pytest", "passed": True, "output_summary": "通过"}
+        ],
+        new_evidence=[
+            {
+                "evidence_id": "E002",
+                "source": {"path": "core.py", "sha256": digest},
+                "processing_step": "根据负载阈值选择资源路径",
+                "state_change": "任务状态变为带资源路径的状态",
+                "technical_effect": "减少不适配资源分配造成的等待",
+                "effect_basis": "mechanism-derived",
+                "status": "code-supported",
+            }
+        ],
+        origin_provenance={
+            "origin_type": "agent_implemented",
+            "human_contributions": [],
+            "source": "authorized Codex implementation",
+            "inventorship_review_required": True,
+        },
+    )
+    assert result["iteration"]["status"] == "validated"
+    evidence = json.loads((case / "01-code-evidence-map.json").read_text())
+
+    # Re-understand and re-search the changed project before Claims V1.
+    implemented_evidence = evidence
+    _complete_evidence(case)
+    _write(case / "01-code-evidence-map.json", json.dumps(implemented_evidence, ensure_ascii=False))
+    for relative in (
+        "project-understanding/technical-model.json",
+        "project-understanding/search-feature-model.json",
+    ):
+        path = case / relative
+        _write(path, path.read_text(encoding="utf-8").replace("E001", "E002"))
+    advance_stage(case, "INVENTION_CANDIDATES")
+    _complete_candidates(case)
+    candidates_path = case / "02-invention-candidates.json"
+    _write(
+        candidates_path,
+        candidates_path.read_text(encoding="utf-8").replace("E001", "E002"),
+    )
+    advance_stage(case, "FIRST_SEARCH")
+    proposal_search = json.loads(_search_record("P001").strip())
+    proposal_search.update(
+        {
+            "record_id": "S901",
+            "proposal_id": "SP001",
+            "search_scope": "engineering_proposal",
+        }
+    )
+    _write(
+        case / "03-prior-art-search" / "search-records.jsonl",
+        "".join(_search_record(candidate) for candidate in ("P001", "P002", "P003"))
+        + json.dumps(proposal_search, ensure_ascii=False)
+        + "\n",
+    )
+    advance_stage(case, "CANDIDATE_RANKING")
+    _write(
+        case / "02-candidate-ranking.json",
+        json.dumps(
+            {
+                "ranked_candidates": [
+                    _ranking_item("P001", "selected"),
+                    _ranking_item("P002"),
+                    _ranking_item("P003"),
+                ],
+                "selected_candidate_id": "P001",
+                "strategic_ambiguity": False,
+                "human_confirmation_required": False,
+                "human_confirmation": "",
+                "selection_reason": "新实现经重新检索后仍为最优候选",
+            },
+            ensure_ascii=False,
+        ),
+    )
+    advance_stage(case, "FEATURE_MATRIX")
+    _complete_matrix(case)
+    matrix_path = case / "04-feature-matrix.json"
+    _write(matrix_path, matrix_path.read_text(encoding="utf-8").replace("E001", "E002"))
+    advance_stage(case, "CLAIMS_V1")
+    assert json.loads((case / "case-status.json").read_text())["current_stage"] == "CLAIMS_V1"
+
+
+def test_methodology_v2_requires_understanding_and_landscape_before_candidates(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "core.py").write_text("def step(value):\n    return value\n", encoding="utf-8")
+    case = tmp_path / "case"
+    init_case_workspace(case, project)
+    advance_stage(case, "EVIDENCE_MAP")
+    snapshot = json.loads((case / "00-project-snapshot" / "snapshot-manifest.json").read_text())
+    source = snapshot["files"][0]
+    _write(
+        case / "01-code-evidence-map.json",
+        json.dumps(
+            {
+                "evidence": [
+                    {
+                        "evidence_id": "E001",
+                        "source": {"path": source["path"], "sha256": source["sha256"]},
+                        "processing_step": "执行输入状态传递",
+                        "state_change": "输入状态成为输出状态",
+                        "technical_effect": "保持状态传递一致性",
+                        "effect_basis": "mechanism-derived",
+                        "status": "code-supported",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+    )
+    with pytest.raises(ValueError, match="project-technical-model"):
+        advance_stage(case, "INVENTION_CANDIDATES")
+
+    _complete_evidence(case)
+    technical_model = json.loads(
+        (case / "project-understanding" / "technical-model.json").read_text()
+    )
+    technical_model["core_modules"][0]["engineering_evidence_ids"] = ["E999"]
+    _write(
+        case / "project-understanding" / "technical-model.json",
+        json.dumps(technical_model, ensure_ascii=False),
+    )
+    with pytest.raises(ValueError, match="unknown engineering evidence"):
+        advance_stage(case, "INVENTION_CANDIDATES")

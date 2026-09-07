@@ -20,6 +20,7 @@
     "case_dir": {"type": "string", "minLength": 1},
     "project_source": {"type": "string", "minLength": 1},
     "proposed_title": {"type": "string"},
+    "methodology_version": {"type": "integer", "minimum": 1},
     "current_stage": {"$ref": "#/$defs/stage"},
     "revision": {"type": "integer", "minimum": 0},
     "revision_history": {"type": "array", "items": {"type": "object", "required": ["revision_id", "reopened_stage", "reason", "trigger", "created_at", "archived_under"], "properties": {

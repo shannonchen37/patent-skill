@@ -24,9 +24,7 @@ def _case(tmp_path: Path) -> Path:
     case = tmp_path / "patent-case"
     init_case_workspace(case, project)
     advance_stage(case, "EVIDENCE_MAP")
-    snapshot = json.loads(
-        (case / "00-project-snapshot" / "snapshot-manifest.json").read_text()
-    )
+    snapshot = json.loads((case / "00-project-snapshot" / "snapshot-manifest.json").read_text())
     source = snapshot["files"][0]
     _write_json(
         case / "01-code-evidence-map.json",
@@ -42,6 +40,89 @@ def _case(tmp_path: Path) -> Path:
                     "status": "code-supported",
                 }
             ]
+        },
+    )
+    sourced = {"statement": "已有状态处理链", "engineering_evidence_ids": ["E001"]}
+    classified = {
+        "statement": "已有状态处理机制",
+        "reason": "改变后续模块可见的数据状态",
+        "engineering_evidence_ids": ["E001"],
+    }
+    _write_json(
+        case / "project-understanding" / "technical-model.json",
+        {
+            "technical_problem": sourced,
+            "system_boundary": sourced,
+            "inputs": [sourced],
+            "outputs": [sourced],
+            "core_modules": [sourced],
+            "processing_chains": [sourced],
+            "data_state_transitions": [sourced],
+            "technical_effects": [sourced],
+            "core_mechanisms": [classified],
+            "ordinary_components": [
+                {
+                    **classified,
+                    "statement": "通用函数调用",
+                    "reason": "不单独构成核心技术机制",
+                }
+            ],
+            "business_ui_components": [],
+            "third_party_dependencies": [],
+            "uncertainties": [],
+        },
+    )
+    _write_json(
+        case / "project-understanding" / "search-feature-model.json",
+        {
+            "features": [
+                {
+                    "feature_id": "F001",
+                    "statement": "已有状态处理机制",
+                    "technical_role": "连接输入状态与输出状态",
+                    "engineering_evidence_ids": ["E001"],
+                    "technical_disclosure_ids": [],
+                    "search_terms": {
+                        "problem": ["状态处理"],
+                        "mechanism": ["状态转换"],
+                        "synonyms": [],
+                        "broader": [],
+                        "narrower": [],
+                        "ipc_cpc": [],
+                    },
+                }
+            ],
+            "combination_hypotheses": [],
+        },
+    )
+    landscape = {
+        "record_id": "S900",
+        "database": "CNIPA",
+        "search_date": "2026-09-07",
+        "query": "状态处理 状态转换",
+        "feature_ids": ["F001"],
+        "result_count": 1,
+        "reviewed_reference_ids": ["CN1"],
+        "verified_urls": ["https://example.test/CN1"],
+        "coverage_limitations": "测试检索记录",
+        "search_scope": "landscape_feature",
+    }
+    (case / "landscape-search" / "search-records.jsonl").write_text(
+        json.dumps(landscape, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    _write_json(
+        case / "landscape-search" / "prior-art-feature-matrix.json",
+        {
+            "features": [
+                {
+                    "feature_id": "F001",
+                    "search_record_ids": ["S900"],
+                    "references": {"CN1": "partial"},
+                    "crowding": "medium",
+                    "opportunity_note": "可进一步检索具体组合",
+                }
+            ],
+            "landscape_conclusion": "现有机制存在部分公开，组合仍可探索",
         },
     )
     return case
@@ -103,6 +184,18 @@ def _disclosure(
         "confirmed_at": "2026-08-25T00:00:00+00:00",
         "lifecycle_status": "active",
         "superseded_by": None,
+        "origin_provenance": {
+            "origin_type": "human_disclosed",
+            "human_contributions": [
+                {
+                    "contributor_ref": "USER_UNRESOLVED",
+                    "contribution": "确认状态映射机制",
+                    "source": "developer-response",
+                }
+            ],
+            "source": "developer-response",
+            "inventorship_review_required": True,
+        },
     }
 
 
@@ -188,6 +281,9 @@ def test_candidate_completion_cannot_support_candidate_or_claim(tmp_path: Path) 
                     "effect_basis": "mechanism-derived",
                     "engineering_evidence_ids": ["E001"],
                     "technical_disclosure_ids": ["Q003"],
+                    "source_feature_ids": ["F001"],
+                    "landscape_search_record_ids": ["S900"],
+                    "implementation_gap": None,
                     "risk": "medium",
                 }
                 for index in range(1, 4)
@@ -242,6 +338,9 @@ def test_candidate_and_independent_claim_cannot_be_td_only(tmp_path: Path) -> No
                 "effect_basis": "mechanism-derived",
                 "engineering_evidence_ids": [],
                 "technical_disclosure_ids": ["TD001"],
+                "source_feature_ids": ["F001"],
+                "landscape_search_record_ids": ["S900"],
+                "implementation_gap": None,
                 "risk": "medium",
             }
             for index in range(1, 4)
@@ -285,8 +384,7 @@ def test_superseded_td_makes_old_claim_support_stale(tmp_path: Path) -> None:
         },
     )
     assert any(
-        "unavailable technical disclosure" in error
-        for error in _validate_support_map(case, {})
+        "unavailable technical disclosure" in error for error in _validate_support_map(case, {})
     )
 
 
@@ -353,6 +451,9 @@ def test_golden_missing_mechanism_can_be_confirmed_and_traced_to_claim(
                 "effect_basis": "mechanism-derived",
                 "engineering_evidence_ids": ["E001"],
                 "technical_disclosure_ids": ["TD001"],
+                "source_feature_ids": ["F001"],
+                "landscape_search_record_ids": ["S900"],
+                "implementation_gap": None,
                 "risk": "medium",
             }
         )

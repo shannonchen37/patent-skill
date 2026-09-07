@@ -17,7 +17,12 @@
       "state_change": {"type": "string", "minLength": 4},
       "technical_effect": {"type": "string", "minLength": 4},
       "effect_basis": {"enum": ["measured", "observed", "mechanism-derived"]},
-      "status": {"enum": ["code-supported", "document-supported", "experiment-supported"]}
+      "status": {"enum": ["code-supported", "document-supported", "experiment-supported"]},
+      "snapshot_id": {"type": "string", "pattern": "^S[0-9]{3,}$"},
+      "engineering_iteration_id": {"type": "string", "pattern": "^IT[0-9]{3,}$"},
+      "proposal_id": {"type": "string", "pattern": "^SP[0-9]{3,}$"},
+      "validation_status": {"enum": ["not_run", "passed", "failed", "other_sufficient"]},
+      "novelty_distinction_eligible": {"type": "boolean"}
     }, "additionalProperties": false
   }}},
   "additionalProperties": false

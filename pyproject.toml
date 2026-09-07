@@ -41,6 +41,13 @@ packages = ["patent_skill"]
 "schemas/final-search-session.schema.json" = "patent_skill/schemas/final-search-session.schema.json"
 "schemas/case-status.schema.json" = "patent_skill/schemas/case-status.schema.json"
 "schemas/independent-audit.schema.json" = "patent_skill/schemas/independent-audit.schema.json"
+"schemas/technical-disclosures.schema.json" = "patent_skill/schemas/technical-disclosures.schema.json"
+"schemas/project-technical-model.schema.json" = "patent_skill/schemas/project-technical-model.schema.json"
+"schemas/search-feature-model.schema.json" = "patent_skill/schemas/search-feature-model.schema.json"
+"schemas/landscape-feature-matrix.schema.json" = "patent_skill/schemas/landscape-feature-matrix.schema.json"
+"schemas/candidate-ranking.schema.json" = "patent_skill/schemas/candidate-ranking.schema.json"
+"schemas/patent-engineering-proposals.schema.json" = "patent_skill/schemas/patent-engineering-proposals.schema.json"
+"schemas/engineering-iterations.schema.json" = "patent_skill/schemas/engineering-iterations.schema.json"
 
 [tool.pytest.ini_options]
 addopts = "-q"

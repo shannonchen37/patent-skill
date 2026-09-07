@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Search-bound Candidate Ranking",
+  "type": "object",
+  "required": [
+    "ranked_candidates", "selected_candidate_id", "strategic_ambiguity",
+    "human_confirmation_required", "human_confirmation", "selection_reason"
+  ],
+  "properties": {
+    "ranked_candidates": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "candidate_id", "prior_art_crowding", "distinguishing_combination",
+          "technical_effect", "engineering_support", "td_support",
+          "implementation_completeness", "design_around_risk", "protection_breadth",
+          "requires_patent_engineering", "split_application_recommended",
+          "targeted_search_record_ids", "disposition"
+        ],
+        "properties": {
+          "candidate_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
+          "prior_art_crowding": {"enum": ["low", "medium", "high"]},
+          "distinguishing_combination": {"type": "string", "minLength": 4},
+          "technical_effect": {"type": "string", "minLength": 4},
+          "engineering_support": {"enum": ["strong", "partial", "weak"]},
+          "td_support": {"enum": ["none", "sufficient", "incomplete"]},
+          "implementation_completeness": {"enum": ["complete", "partial", "missing"]},
+          "design_around_risk": {"enum": ["low", "medium", "high"]},
+          "protection_breadth": {"enum": ["narrow", "moderate", "broad"]},
+          "requires_patent_engineering": {"type": "boolean"},
+          "implementation_gap": {"type": ["string", "null"]},
+          "split_application_recommended": {"type": "boolean"},
+          "targeted_search_record_ids": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^S[0-9]+$"}
+          },
+          "disposition": {"enum": ["selected", "reserve", "rejected_crowded", "rejected_weak"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "selected_candidate_id": {"type": "string", "pattern": "^P[0-9]{3,}$"},
+    "strategic_ambiguity": {"type": "boolean"},
+    "human_confirmation_required": {"type": "boolean"},
+    "human_confirmation": {"type": "string"},
+    "selection_reason": {"type": "string", "minLength": 4}
+  },
+  "additionalProperties": false
+}

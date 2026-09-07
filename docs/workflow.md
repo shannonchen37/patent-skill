@@ -1,25 +1,49 @@
 # Workflow
 
-The canonical workflow is defined in `SKILL.md`. Key invariants:
+The canonical state machine remains stable, but methodology version 2 changes what the early gates prove:
 
-1. A user must identify a target project separate from the Skill package; without one, guide upload or workspace selection.
-2. Ask for an optional proposed patent title. If none exists, mine and propose one after selecting a searched feature combination.
-3. The Skill's own files are tooling and never the patent subject.
-4. Freeze an evidence snapshot and keep one canonical `patent-case/` before analysis.
-5. Build schema-validated canonical JSON for the engineering-evidence map, confirmed technical disclosures, and 3–5 candidate feature combinations; generate Markdown views rather than maintaining two sources.
-6. When a material mechanism is missing, propose exactly one parameter-light candidate completion, ask one focused question, and promote it to TD only after user confirmation and sufficient disclosure.
-7. Search all viable candidates before ranking and selecting the main invention. Require user confirmation only when the ranking is strategically ambiguous.
-8. A renamed title never cures technical overlap; compare claims and technical solutions.
-9. Multiple references are not mosaiced to reject novelty.
-10. Validate Claims V1 and Claims V2 with the Chinese claim validator. Claims V1 drive the specification; a support-candidate pool precedes Claims V2.
-11. Trace every limitation to E or enablement-sufficient TD provenance; retain at least one E anchor for every candidate and independent claim.
-12. Bind the final-search session to Claims V2 hashes; require independent combination and distinguishing-feature coverage.
-13. Build a clean filing rendering, synchronized final specification/abstract, and conditional provenance-bound figures.
-14. Bind structured final and independent audits to immutable source hashes; disclose claim-used unimplemented TDs and reconcile every independent finding before DOCX.
-15. Shannon is the only canonical writer. yjmm10 supplies optional CNIPA search evidence; Huang supplies final independent audit and DOCX only.
-16. Applicant and inventor form data are deferred placeholders, not early content-generation gates.
-17. The software never promises zero collision or emits `FILING_READY`.
-18. The workflow is progressive, not end to end: pause whenever a material technical uncertainty exists.
-19. Store questions as structured objects. Rejection/unknown never creates TD; a blocking unknown prevents content readiness.
-20. Use formal revision to archive stale downstream artifacts when later search or review changes an earlier stage.
-21. Separate technical-content readiness, independent audit, and valid OOXML rendering.
+```text
+Understand first
+  snapshot → E/TD provenance → technical model → F features
+Search second
+  landscape search → candidates → targeted search → ranking
+Invent or improve third
+  feature matrix → optional screened SP proposal → user decision → optional implementation
+Draft last
+  Claims V1 → specification → Claims V2 → support → final search → audits → DOCX
+```
+
+## Invariants
+
+1. A user identifies a real target project separate from the Skill package.
+2. Freeze immutable `S001` before analysis; every `E###` binds to a path/hash in the current snapshot.
+3. Build a complete Project Technical Model before formal candidates. It must separate core mechanisms, ordinary components, business/UI elements, dependencies, and uncertainties.
+4. Build `F###` Search Features from that model. Every feature retains E/approved-TD provenance and search terminology.
+5. Landscape search covers every `F###` and material combination before provisional patent opportunities. Candidate-targeted search covers every viable opportunity before it can be formally ranked or selected.
+6. A renamed title never cures overlap; compare technical features and solutions. Multiple references are not mosaiced to reject novelty.
+7. Classify uncertainty as Fact Gap or Design Gap. A Fact Gap asks what the project already does. A Design Gap may receive an `SP###` proposal only after relevant search.
+8. Candidate Completion remains parameter-light. `PROPOSED_DEFAULT` is allowed only in an SP reference proposal and is never fact or claim support.
+9. An SP must be searched before user decision. Rejected, uncertain, or pending proposals create no usable TD. High overlap makes an SP ineligible as a novelty/inventive-step distinction, but explicit `real_engineering_value` authority may still permit implementation.
+10. Proposal adoption, code implementation authorization, and Git commit authorization are independent. Adoption/modification may create an active, enablement-sufficient TD; it authorizes neither code changes nor commits.
+11. Any real implementation creates `S002+` and new E bound to `snapshot_id + engineering_iteration_id + proposal_id`. Failed validation is recorded on both E and iteration and blocks the validated Gate; later sufficient validation may promote it. All older snapshots remain, and downstream analysis is archived and invalidated.
+12. Claims remain last. Claims V1 drive the specification; Claims V2 and every dependent added limitation receive exact support mapping.
+13. Every candidate and independent claim retains at least one E anchor. An SP alone can never support a limitation.
+14. Final search is bound to Claims V2 hashes and covers each independent combination and distinguishing limitation.
+15. SP, TD, and Engineering Iteration record origin and human contributions. Final audit distinguishes frozen-implementation, TD-only, and validated Patent Engineering provenance and always requires separate inventorship review without deciding inventorship.
+16. Shannon is the only canonical writer. yjmm10 supplies optional search evidence; Huang supplies independent audit and DOCX only.
+17. Applicant/form data are deferred. The software never promises zero collision or emits `FILING_READY`.
+
+## State mapping
+
+The enforced sequence is unchanged for compatibility:
+
+`PROJECT_SNAPSHOT → EVIDENCE_MAP → INVENTION_CANDIDATES → FIRST_SEARCH → CANDIDATE_RANKING → FEATURE_MATRIX → CLAIMS_V1 → SPECIFICATION_V1 → SUPPORT_CANDIDATES → CLAIMS_V2 → CLAIM_SUPPORT_MAP → FINAL_SEARCH → APPLICATION_DRAFT → FINAL_AUDIT → CONTENT_READY_FOR_ATTORNEY_REVIEW → INDEPENDENT_AUDIT → DOCX_PACKAGE_RENDERED`
+
+- `EVIDENCE_MAP` now also gates the Project Technical Model, Search Feature Model, landscape search, and landscape feature matrix.
+- `INVENTION_CANDIDATES` stores provisional, stable-ID patent opportunities so targeted searches can bind to them; it does not select the formal main invention.
+- `FIRST_SEARCH` is candidate-targeted search, not the first time searching the field.
+- `CANDIDATE_RANKING` formally ranks/selects only after targeted search and requires explicit search bindings plus engineering-completeness analysis.
+- `FEATURE_MATRIX` gates optional Patent Engineering proposals and implementation iterations before Claims V1.
+- Later states retain the existing claim, support, hash, audit, revision, and OOXML gates.
+
+Legacy cases without `methodology_version: 2` retain their prior validation behavior. New cases use version 2.

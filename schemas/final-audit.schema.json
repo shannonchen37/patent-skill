@@ -52,6 +52,42 @@
         },
         "additionalProperties": false
       }
+    },
+    "provenance_summary": {
+      "type": "object",
+      "required": [
+        "frozen_implementation_limitations", "td_only_limitations",
+        "patent_engineering_limitations"
+      ],
+      "properties": {
+        "frozen_implementation_limitations": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}
+        },
+        "td_only_limitations": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}
+        },
+        "patent_engineering_limitations": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(I|D)[0-9]+-L[0-9]+$"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "inventorship_review": {
+      "type": "object",
+      "required": ["review_required", "skill_determination", "source_ids", "note"],
+      "properties": {
+        "review_required": {"const": true},
+        "skill_determination": {"const": "NOT_DETERMINED"},
+        "source_ids": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(SP|TD|IT)[0-9]{3,}$"}
+        },
+        "note": {"type": "string", "minLength": 8}
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

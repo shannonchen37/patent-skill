@@ -16,6 +16,9 @@
       "effect_basis": {"enum": ["measured", "observed", "mechanism-derived"]},
       "engineering_evidence_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}},
       "technical_disclosure_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^TD[0-9]{3,}$"}},
+      "source_feature_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^F[0-9]{3,}$"}},
+      "landscape_search_record_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^S[0-9]+$"}},
+      "implementation_gap": {"type": ["string", "null"]},
       "risk": {"enum": ["low", "medium", "high"]}
     }, "additionalProperties": false
   }}},

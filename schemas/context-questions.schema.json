@@ -20,6 +20,7 @@
       "resolution_type": {
         "enum": ["candidate_confirmed", "candidate_modified", "candidate_rejected", "unknown"]
       },
+      "gap_type": {"enum": ["FACT_GAP", "DESIGN_GAP"]},
       "candidate_completion": {
         "type": "object",
         "required": ["statement", "basis_refs", "status"],

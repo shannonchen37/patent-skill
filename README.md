@@ -2,9 +2,9 @@
 
 **从真实软件、AI 与算法项目中提取工程证据，生成可追溯的中国发明专利案件包。**
 
-Patent Skill 不是“把代码交给大模型，然后生成一篇专利”的工具。它先从真实代码和研发材料中恢复技术机制，再经过发明点筛选、现有技术检索、权利要求设计、说明书支持性追踪和结构化审计。
+Patent Skill 不是“把代码交给大模型，然后生成一篇专利”的工具。它遵循 **先理解、再检索、后发明或改进、最后撰写**：先恢复项目真实技术模型和可检索特征，再用现有技术约束候选方案，必要时向用户提供经初筛的参考实现，最后才进入权利要求和说明书。
 
-> Engineering evidence → Invention → Prior art → Claims → Specification → Support → Audit
+> Understand → Search → Invent / Improve → Draft → Trace → Audit
 
 [![CI](https://github.com/shannonchen37/patent-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/shannonchen37/patent-skill/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
@@ -21,36 +21,41 @@ Source Code → LLM → Patent Draft
 Patent Skill 使用证据优先、分阶段校验的路径：
 
 ```text
-Source Code
+Real Project Snapshot
     ↓
-Engineering Evidence
+Technical Model & Engineering Evidence
     ↓
-Invention Candidates
+Landscape Search
     ↓
-Prior-art Search
+Invention Candidates & Targeted Search
+    ↓
+Optional Patent Engineering
     ↓
 Claims & Specification
     ↓
-Support Trace & Final Search
-    ↓
-Audit & Attorney Review
+Support, Final Search & Audit
 ```
 
 核心原则：
 
-- **Evidence-first**：不能由代码、设计文档、测试、实验记录或用户确认支持的技术特征，不能凭空进入权利要求。
-- **Search-before-claims**：在确定保护中心前先检索候选发明，最终权利要求形成后再次检索。
+- **Understand-first**：先建立完整技术模型，区分核心机制、普通组件、业务/UI 和未知项，而不是扫描函数后直接猜发明点。
+- **Search-before-invention**：先对可检索特征做技术地形检索，再形成候选；候选排序前还要做定向检索。
+- **Evidence-first**：代码、设计文档、测试和实验记录形成 `E###`；用户确认且充分公开的设计形成 `TD###`，二者严格分开。
+- **Patent Engineering**：对真正的设计缺口可提出并初筛 `SP###`；方案采纳、代码实施授权和 Git commit 授权彼此独立。真实冻结代码可形成 E，但验证失败会被明确标记并阻断 validated Gate。
 - **Claim traceability**：权利要求限定能够回溯到工程证据、说明书支持和对应技术效果。
-- **Stale-analysis protection**：权利要求或最终申请内容发生实质修改后，旧检索和旧审计不能静默继续使用。
+- **Stale-analysis protection**：代码改进会冻结新快照并重启理解/检索；权利要求或申请内容修改后，旧检索和审计不能静默复用。
 
 ## Capabilities
 
 | 能力 | 说明 |
 |---|---|
 | Engineering Evidence | 从源码、配置、测试和设计材料中恢复技术机制，而不是只依赖 README |
+| Project Technical Model | 还原边界、输入输出、处理链、状态变化、核心机制与普通组件 |
+| Search Feature Model | 将技术模型转为带同义词、宽窄表达和 IPC/CPC 种子的 `F###` 检索特征 |
 | Inventor Disclosure | 将尚未编码、但经发明人或开发者确认且达到充分公开要求的技术设计，与代码证据严格区分后纳入方案 |
-| Invention Discovery | 从一个项目中挖掘多个候选发明，并筛选更值得保护的特征组合 |
-| Prior-art Search | 在确定保护中心前检索，并在最终权利要求形成后再次检索 |
+| Invention Discovery | 在技术地形检索后形成多个候选，并经候选级检索再排序 |
+| Patent Engineering | 对设计缺口提出经初步查新的参考实现，由用户采纳、修改、拒绝或选择实施 |
+| Prior-art Search | 覆盖技术地形、候选定向、参考方案初筛和最终权利要求检索 |
 | Claims Engineering | 起草并校验中国发明专利独立权利要求与从属权利要求 |
 | Specification Drafting | 根据权利要求和工程证据组织说明书、摘要及必要附图 |
 | Support Traceability | 将权利要求限定关联到工程证据、说明书支持和技术效果 |
@@ -100,22 +105,24 @@ git -C ~/.codex/skills/patent-skill pull
 ```text
 真实研发项目
     ↓
-工程证据与技术机制
+技术模型、工程证据与检索特征
     ↓
-候选发明筛选
+第一次技术地形检索
     ↓
-第一次现有技术检索
+候选发明与定向检索
     ↓
-权利要求与说明书
+必要时进行 Patent Engineering
     ↓
-支持性追踪与最终检索
+权利要求、说明书与支持性追踪
     ↓
-最终申请内容与结构化审计
+权利要求级二次检索与结构化审计
     ↓
 专利代理师复核
 ```
 
-Patent Skill 使用分阶段工作流，而不是一次性生成。只有会实质影响发明点、区别特征、技术效果或保护范围的不确定内容才会阻断推进；申请人、地址等表单信息可以稍后填写。
+Patent Skill 使用分阶段工作流，而不是一次性生成。它会把“现有项目事实不清楚”识别为 **Fact Gap**，把“项目已理解但候选机制仍不完整”识别为 **Design Gap**。前者优先查材料并向用户核实；后者在查新后给出完整参考实现，而不是让用户替 Agent 发明。申请人、地址等表单信息可以稍后填写。
+
+高重合参考方案不能作为新颖性或创造性的区别特征，但用户仍可因真实工程价值单独授权实施。所有 SP、TD 和工程迭代均记录来源及人员贡献，并在最终审计中要求另行进行发明人资格复核；Patent Skill 不自动判断发明人。
 
 完整流程、校验 Gate 和正式修订规则见 [工作流文档](docs/workflow.md)。普通 Skill 用户不需要手动管理内部状态；CLI 主要用于开发、调试和工作流集成，可运行：
 

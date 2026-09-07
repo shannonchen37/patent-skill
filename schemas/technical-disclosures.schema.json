@@ -79,6 +79,43 @@
             ],
             "additionalProperties": false
           },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "value", "provenance", "rationale"],
+              "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "value": {},
+                "provenance": {"enum": ["EVIDENCE_BACKED", "USER_CONFIRMED"]},
+                "rationale": {"type": "string", "minLength": 4}
+              },
+              "additionalProperties": false
+            }
+          },
+          "origin_provenance": {
+            "type": "object",
+            "required": ["origin_type", "human_contributions", "source", "inventorship_review_required"],
+            "properties": {
+              "origin_type": {"enum": ["human_disclosed", "agent_proposal_adopted", "jointly_developed"]},
+              "human_contributions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["contributor_ref", "contribution", "source"],
+                  "properties": {
+                    "contributor_ref": {"type": "string", "minLength": 1},
+                    "contribution": {"type": "string", "minLength": 4},
+                    "source": {"type": "string", "minLength": 2}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "source": {"type": "string", "minLength": 2},
+              "inventorship_review_required": {"const": true}
+            },
+            "additionalProperties": false
+          },
           "confirmed_via": {"enum": ["user_response", "signed_disclosure", "meeting_record"]},
           "confirmed_at": {"type": "string", "format": "date-time"},
           "lifecycle_status": {"enum": ["active", "superseded"]},

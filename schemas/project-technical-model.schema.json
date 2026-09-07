@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical Project Technical Model",
+  "type": "object",
+  "required": [
+    "technical_problem", "system_boundary", "inputs", "outputs", "core_modules",
+    "processing_chains", "data_state_transitions", "technical_effects",
+    "core_mechanisms", "ordinary_components", "business_ui_components",
+    "third_party_dependencies", "uncertainties"
+  ],
+  "$defs": {
+    "sourcedItem": {
+      "type": "object",
+      "required": ["statement", "engineering_evidence_ids"],
+      "properties": {
+        "statement": {"type": "string", "minLength": 4},
+        "engineering_evidence_ids": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "classifiedItem": {
+      "type": "object",
+      "required": ["statement", "reason", "engineering_evidence_ids"],
+      "properties": {
+        "statement": {"type": "string", "minLength": 4},
+        "reason": {"type": "string", "minLength": 4},
+        "engineering_evidence_ids": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^E[0-9]{3,}$"}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "technical_problem": {"$ref": "#/$defs/sourcedItem"},
+    "system_boundary": {"$ref": "#/$defs/sourcedItem"},
+    "inputs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "outputs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "core_modules": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "processing_chains": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "data_state_transitions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "technical_effects": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sourcedItem"}},
+    "core_mechanisms": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/classifiedItem"}},
+    "ordinary_components": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/classifiedItem"}},
+    "business_ui_components": {"type": "array", "items": {"$ref": "#/$defs/classifiedItem"}},
+    "third_party_dependencies": {"type": "array", "items": {"$ref": "#/$defs/classifiedItem"}},
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["statement", "gap_type", "blocking"],
+        "properties": {
+          "statement": {"type": "string", "minLength": 4},
+          "gap_type": {"enum": ["fact_gap", "design_gap"]},
+          "blocking": {"type": "boolean"},
+          "related_feature_ids": {
+            "type": "array", "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^F[0-9]{3,}$"}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -54,12 +54,12 @@ SEARCH_FIELDS = {
     "database",
     "search_date",
     "query",
-    "candidate_id",
     "result_count",
     "reviewed_reference_ids",
     "verified_urls",
     "coverage_limitations",
 }
+METHODOLOGY_VERSION = 2
 FINAL_SEARCH_FIELDS = {"claim_id", "limitation_ids", "search_scope"}
 FINAL_SEARCH_SCOPES = {"claim_combination", "distinguishing_limitation"}
 TRACE_LINE_RE = re.compile(r"^[；;、]?\s*\[((?:I|D)\d+-L\d+)\]\s*(.+)$")
@@ -76,6 +76,8 @@ BASE_REQUIRED_DOCX_SUBJECTS = (
 
 STAGE_ARTIFACTS: dict[CaseStage, tuple[str, ...]] = {
     CaseStage.EVIDENCE_MAP: (
+        "project-understanding",
+        "landscape-search",
         "01-code-evidence-map.json",
         "01-code-evidence-map.md",
         "01-technical-disclosures.json",
@@ -215,6 +217,9 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
     snapshot_dir.mkdir(parents=True, exist_ok=True)
     snapshot = _create_snapshot(project)
     _write_json(snapshot_dir / "snapshot-manifest.json", snapshot)
+    baseline_dir = snapshot_dir / "snapshots" / "S001"
+    baseline_dir.mkdir(parents=True)
+    _write_json(baseline_dir / "snapshot-manifest.json", snapshot)
     (snapshot_dir / "README.md").write_text(
         "# 专利证据版本\n\n该清单冻结本案分析所依据的工程材料。"
         "snapshot_type 可为 git_commit、uploaded_archive 或 directory_manifest。\n",
@@ -266,6 +271,7 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
         "case_dir": str(case_dir),
         "project_source": str(project),
         "proposed_title": title,
+        "methodology_version": METHODOLOGY_VERSION,
         "current_stage": CaseStage.PROJECT_SNAPSHOT.value,
         "revision": 0,
         "revision_history": [],
@@ -283,6 +289,21 @@ def init_case_workspace(case_dir: Path, project: Path, title: str = "") -> dict[
         },
     }
     _write_json(status_path, status)
+    engineering_dir = case_dir / "patent-engineering"
+    engineering_dir.mkdir(parents=True)
+    _write_json(
+        engineering_dir / "proposals.json",
+        {"case_revision": 0, "proposals": []},
+    )
+    _render_engineering_proposals(case_dir, {"proposals": []})
+    _write_json(
+        engineering_dir / "iterations.json",
+        {
+            "baseline_snapshot": "S001",
+            "current_snapshot": "S001",
+            "engineering_iterations": [],
+        },
+    )
     return {"status": status, "snapshot": snapshot}
 
 
@@ -407,6 +428,218 @@ def resolve_case_question(
     return question
 
 
+def resolve_engineering_proposal(
+    case_dir: Path,
+    proposal_id: str,
+    decision: str,
+    answer: str,
+    source: str,
+    *,
+    technical_disclosure: dict[str, Any] | None = None,
+    modified_parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record a screened Patent Engineering decision without treating a proposal as fact."""
+    case_dir = case_dir.resolve()
+    if decision not in {"adopt", "modify", "reject", "uncertain"}:
+        raise ValueError("Unknown Patent Engineering decision")
+    if not answer.strip() or not source.strip():
+        raise ValueError("Patent Engineering decision requires an answer and source")
+    proposals_path = case_dir / "patent-engineering" / "proposals.json"
+    proposals = _load_json(proposals_path, "patent engineering proposals")
+    matches = [
+        item for item in proposals.get("proposals", []) if item.get("proposal_id") == proposal_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate Patent Engineering proposal: {proposal_id}")
+    proposal = matches[0]
+    screening = proposal.get("screening", {})
+    if screening.get("status") != "completed" or not screening.get("search_record_ids"):
+        raise ValueError("Patent Engineering proposal must be screened before user decision")
+    if screening.get("overlap_risk") == "high" and screening.get("patent_distinction_eligible"):
+        raise ValueError("High-overlap proposal cannot be patent-distinction eligible")
+
+    disclosures_path = case_dir / "01-technical-disclosures.json"
+    disclosures = _load_json(disclosures_path, "technical disclosures")
+    disclosure_ids: list[str] = []
+    if decision in {"adopt", "modify"}:
+        if technical_disclosure is None:
+            raise ValueError("Adopted Patent Engineering proposal requires a confirmed TD")
+        disclosure_id = str(technical_disclosure.get("disclosure_id", ""))
+        question_id = str(technical_disclosure.get("question_id", ""))
+        if any(
+            item.get("disclosure_id") == disclosure_id
+            for item in disclosures.get("disclosures", [])
+        ):
+            raise ValueError(f"Duplicate technical disclosure: {disclosure_id}")
+        question_ledger = _load_json(case_dir / "context-questions.json", "context questions")
+        questions = [
+            item for item in question_ledger.get("questions", []) if item.get("id") == question_id
+        ]
+        if len(questions) != 1 or not questions[0].get("candidate_completion"):
+            raise ValueError("Patent Engineering TD must resolve its linked Design Gap question")
+        if questions[0].get("gap_type") != "DESIGN_GAP":
+            raise ValueError("Patent Engineering proposal must resolve a Design Gap")
+        if decision == "modify":
+            if not modified_parameters:
+                raise ValueError("Modified proposal requires user-confirmed parameter values")
+            parameter_map = {item.get("name"): item for item in proposal.get("parameters", [])}
+            missing = set(modified_parameters) - set(parameter_map)
+            if missing:
+                raise ValueError(
+                    "Modified proposal references unknown parameters: " + ", ".join(sorted(missing))
+                )
+            for name, value in modified_parameters.items():
+                parameter_map[name]["value"] = value
+                parameter_map[name]["provenance"] = "USER_CONFIRMED"
+                parameter_map[name]["rationale"] = "用户在 Patent Engineering 决策中确认"
+        confirmed_parameters = []
+        for parameter in proposal.get("parameters", []):
+            confirmed = dict(parameter)
+            if confirmed.get("provenance") == "PROPOSED_DEFAULT":
+                confirmed["provenance"] = "USER_CONFIRMED"
+                confirmed["rationale"] = "用户采纳或修改 Patent Engineering 参考参数"
+            confirmed_parameters.append(confirmed)
+        if confirmed_parameters:
+            technical_disclosure["parameters"] = confirmed_parameters
+        technical_disclosure.setdefault(
+            "origin_provenance",
+            {
+                "origin_type": "agent_proposal_adopted",
+                "human_contributions": [
+                    {
+                        "contributor_ref": "USER_UNRESOLVED",
+                        "contribution": answer.strip(),
+                        "source": source.strip(),
+                    }
+                ],
+                "source": f"{proposal_id} + {source.strip()}",
+                "inventorship_review_required": True,
+            },
+        )
+        disclosures.setdefault("disclosures", []).append(technical_disclosure)
+        disclosure_errors = validate_schema(disclosures, "technical-disclosures.schema.json")
+        if disclosure_errors:
+            raise ValueError("Invalid technical disclosure: " + "; ".join(disclosure_errors))
+        disclosure_ids = [disclosure_id]
+        _write_json(disclosures_path, disclosures)
+        _render_technical_disclosures(case_dir, disclosures)
+        resolve_case_question(
+            case_dir,
+            question_id,
+            answer,
+            source,
+            resolution_type=(
+                "candidate_modified" if decision == "modify" else "candidate_confirmed"
+            ),
+            resulting_disclosure_ids=disclosure_ids,
+        )
+        proposal["status"] = "modified" if decision == "modify" else "adopted"
+        if decision == "modify":
+            proposal["origin_provenance"]["origin_type"] = "jointly_developed"
+            proposal["origin_provenance"].setdefault("human_contributions", []).append(
+                {
+                    "contributor_ref": "USER_UNRESOLVED",
+                    "contribution": answer.strip(),
+                    "source": source.strip(),
+                }
+            )
+    else:
+        if technical_disclosure is not None:
+            raise ValueError("Rejected or uncertain proposal cannot create a TD")
+        question_id = str(proposal.get("design_gap_question_id", ""))
+        if question_id:
+            resolve_case_question(
+                case_dir,
+                question_id,
+                answer,
+                source,
+                resolution_type=("candidate_rejected" if decision == "reject" else "unknown"),
+            )
+        proposal["status"] = "rejected" if decision == "reject" else "uncertain"
+
+    proposal["technical_disclosure_ids"] = disclosure_ids
+    proposal["user_decision"] = {
+        "decision": decision,
+        "source": source.strip(),
+        "decided_at": datetime.now(UTC).isoformat(),
+    }
+    errors = validate_schema(proposals, "patent-engineering-proposals.schema.json")
+    if errors:
+        raise ValueError("Invalid Patent Engineering proposals: " + "; ".join(errors))
+    _write_json(proposals_path, proposals)
+    _render_engineering_proposals(case_dir, proposals)
+    return proposal
+
+
+def authorize_engineering_implementation(
+    case_dir: Path,
+    proposal_id: str,
+    authorization_source: str,
+    *,
+    purpose: str,
+) -> dict[str, Any]:
+    """Record code-change authority independently from proposal adoption and commit authority."""
+    if purpose not in {"patent_distinction", "real_engineering_value"}:
+        raise ValueError("Unknown implementation authorization purpose")
+    if not authorization_source.strip():
+        raise ValueError("Implementation authorization requires an explicit source")
+    path = case_dir.resolve() / "patent-engineering" / "proposals.json"
+    proposals = _load_json(path, "patent engineering proposals")
+    matches = [
+        item for item in proposals.get("proposals", []) if item.get("proposal_id") == proposal_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate Patent Engineering proposal: {proposal_id}")
+    proposal = matches[0]
+    if proposal.get("user_decision", {}).get("decision") not in {"adopt", "modify"}:
+        raise ValueError("Implementation authorization requires prior proposal adoption")
+    screening = proposal.get("screening", {})
+    if screening.get("overlap_risk") == "high" and purpose != "real_engineering_value":
+        raise ValueError(
+            "High-overlap proposal may be implemented only for explicit real engineering value"
+        )
+    proposal["implementation"] = {
+        "authorized": True,
+        "authorization_source": authorization_source.strip(),
+        "authorization_purpose": purpose,
+        "status": "pending",
+    }
+    errors = validate_schema(proposals, "patent-engineering-proposals.schema.json")
+    if errors:
+        raise ValueError("Invalid Patent Engineering proposals: " + "; ".join(errors))
+    _write_json(path, proposals)
+    _render_engineering_proposals(case_dir.resolve(), proposals)
+    return proposal
+
+
+def authorize_engineering_commit(
+    case_dir: Path, proposal_id: str, authorization_source: str
+) -> dict[str, Any]:
+    """Record Git commit authority; this does not adopt or authorize implementation."""
+    if not authorization_source.strip():
+        raise ValueError("Git commit authorization requires an explicit source")
+    path = case_dir.resolve() / "patent-engineering" / "proposals.json"
+    proposals = _load_json(path, "patent engineering proposals")
+    matches = [
+        item for item in proposals.get("proposals", []) if item.get("proposal_id") == proposal_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate Patent Engineering proposal: {proposal_id}")
+    proposal = matches[0]
+    proposal["commit_authorization"] = {
+        "authorized": True,
+        "authorization_source": authorization_source.strip(),
+        "status": "authorized",
+        "commit_sha": None,
+    }
+    errors = validate_schema(proposals, "patent-engineering-proposals.schema.json")
+    if errors:
+        raise ValueError("Invalid Patent Engineering proposals: " + "; ".join(errors))
+    _write_json(path, proposals)
+    _render_engineering_proposals(case_dir.resolve(), proposals)
+    return proposal
+
+
 def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[str, Any]:
     case_dir = case_dir.resolve()
     status = _load_status(case_dir)
@@ -476,6 +709,229 @@ def revise_case_stage(case_dir: Path, target_stage: str, reason: str) -> dict[st
     _prepare_stage_artifact(case_dir, target, revision=revision)
     _write_json(case_dir / "case-status.json", status)
     return status
+
+
+def record_engineering_iteration(
+    case_dir: Path,
+    project: Path,
+    proposal_id: str,
+    *,
+    authorization_source: str,
+    reason: str,
+    changed_files: list[str],
+    test_results: list[dict[str, Any]],
+    new_evidence: list[dict[str, Any]],
+    origin_provenance: dict[str, Any],
+) -> dict[str, Any]:
+    """Freeze real implemented code as E, while keeping validation status explicit."""
+    case_dir = case_dir.resolve()
+    project = project.resolve()
+    if not authorization_source.strip():
+        raise ValueError("Patent Engineering implementation requires explicit user authorization")
+    if not changed_files:
+        raise ValueError("Patent Engineering iteration requires changed files")
+    if not test_results or any(not isinstance(item.get("passed"), bool) for item in test_results):
+        raise ValueError("Patent Engineering iteration requires explicit validation results")
+    required_origin = {
+        "origin_type",
+        "human_contributions",
+        "source",
+        "inventorship_review_required",
+    }
+    if (
+        not required_origin <= origin_provenance.keys()
+        or origin_provenance.get("inventorship_review_required") is not True
+    ):
+        raise ValueError("Engineering iteration requires human-contribution origin provenance")
+
+    proposals_path = case_dir / "patent-engineering" / "proposals.json"
+    proposals = _load_json(proposals_path, "patent engineering proposals")
+    matches = [
+        item for item in proposals.get("proposals", []) if item.get("proposal_id") == proposal_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate Patent Engineering proposal: {proposal_id}")
+    proposal = matches[0]
+    screening = proposal.get("screening", {})
+    decision = proposal.get("user_decision", {}).get("decision")
+    if screening.get("status") != "completed" or not screening.get("search_record_ids"):
+        raise ValueError("Patent Engineering proposal must be searched before implementation")
+    if decision not in {"adopt", "modify"}:
+        raise ValueError("Patent Engineering proposal requires user adoption before implementation")
+    implementation = proposal.get("implementation", {})
+    if not implementation.get("authorized") or not implementation.get("authorization_source"):
+        raise ValueError("Patent Engineering proposal lacks recorded implementation approval")
+    if implementation.get("authorization_source") != authorization_source.strip():
+        raise ValueError("Engineering iteration authorization does not match recorded approval")
+    if (
+        screening.get("overlap_risk") == "high"
+        and implementation.get("authorization_purpose") != "real_engineering_value"
+    ):
+        raise ValueError(
+            "High-overlap implementation requires explicit real-engineering-value authorization"
+        )
+
+    old_snapshot = _load_json(
+        case_dir / "00-project-snapshot" / "snapshot-manifest.json", "snapshot manifest"
+    )
+    new_snapshot = _create_snapshot(project)
+    if new_snapshot.get("snapshot_sha256") == old_snapshot.get("snapshot_sha256"):
+        raise ValueError("Patent Engineering implementation did not change the frozen snapshot")
+    iterations_path = case_dir / "patent-engineering" / "iterations.json"
+    iterations = _load_json(iterations_path, "patent engineering iterations")
+    from_snapshot = str(iterations.get("current_snapshot", "S001"))
+    to_snapshot = f"S{len(iterations.get('engineering_iterations', [])) + 2:03d}"
+    iteration_id = f"IT{len(iterations.get('engineering_iterations', [])) + 1:03d}"
+    validation_status = (
+        "passed" if all(item.get("passed") is True for item in test_results) else "failed"
+    )
+    distinction_eligible = bool(screening.get("patent_distinction_eligible"))
+    enriched_evidence = []
+    for item in new_evidence:
+        enriched = dict(item)
+        enriched.update(
+            {
+                "snapshot_id": to_snapshot,
+                "engineering_iteration_id": iteration_id,
+                "proposal_id": proposal_id,
+                "validation_status": validation_status,
+                "novelty_distinction_eligible": distinction_eligible,
+            }
+        )
+        enriched_evidence.append(enriched)
+    evidence_map = {"evidence": enriched_evidence}
+    evidence_errors = validate_schema(evidence_map, "engineering-provenance.schema.json")
+    manifest = {item["path"]: item["sha256"] for item in new_snapshot.get("files", [])}
+    for item in enriched_evidence:
+        source = item.get("source", {})
+        if source.get("path") not in manifest or source.get("sha256") != manifest.get(
+            source.get("path")
+        ):
+            evidence_errors.append(
+                f"New evidence {item.get('evidence_id')} is not bound to the new snapshot"
+            )
+    if evidence_errors:
+        raise ValueError("New Engineering Evidence is invalid: " + "; ".join(evidence_errors))
+    new_evidence_ids = [item["evidence_id"] for item in enriched_evidence]
+    iteration = {
+        "iteration_id": iteration_id,
+        "proposal_id": proposal_id,
+        "from_snapshot": from_snapshot,
+        "to_snapshot": to_snapshot,
+        "reason": reason.strip(),
+        "authorization_source": authorization_source.strip(),
+        "test_results": test_results,
+        "changed_files": changed_files,
+        "new_evidence_ids": new_evidence_ids,
+        "validation_status": validation_status,
+        "status": "validated" if validation_status == "passed" else "validation_failed",
+        "origin_provenance": origin_provenance,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+    prospective_iterations = json.loads(json.dumps(iterations))
+    prospective_iterations.setdefault("engineering_iterations", []).append(iteration)
+    prospective_iterations["current_snapshot"] = to_snapshot
+    iteration_errors = validate_schema(prospective_iterations, "engineering-iterations.schema.json")
+    if iteration_errors:
+        raise ValueError("Engineering iteration is invalid: " + "; ".join(iteration_errors))
+
+    previous_questions = _load_json(case_dir / "context-questions.json", "context questions")
+    previous_disclosures = _load_json(
+        case_dir / "01-technical-disclosures.json", "technical disclosures"
+    )
+    status = revise_case_stage(
+        case_dir,
+        CaseStage.EVIDENCE_MAP.value,
+        f"Patent Engineering {proposal_id}: {reason.strip()}",
+    )
+    revision = int(status.get("revision", 0))
+    snapshot_dir = case_dir / "00-project-snapshot" / "snapshots" / to_snapshot
+    snapshot_dir.mkdir(parents=True, exist_ok=False)
+    _write_json(snapshot_dir / "snapshot-manifest.json", new_snapshot)
+    _write_json(case_dir / "00-project-snapshot" / "snapshot-manifest.json", new_snapshot)
+    _write_json(case_dir / "01-code-evidence-map.json", evidence_map)
+    _render_evidence_map(case_dir, evidence_map)
+    for question in previous_questions.get("questions", []):
+        if question.get("id") != proposal.get("design_gap_question_id"):
+            continue
+        question["evidence_refs"] = new_evidence_ids
+        if question.get("candidate_completion"):
+            question["candidate_completion"]["basis_refs"] = new_evidence_ids
+    previous_disclosures["case_revision"] = revision
+    _write_json(case_dir / "01-technical-disclosures.json", previous_disclosures)
+    _render_technical_disclosures(case_dir, previous_disclosures)
+    _write_json(case_dir / "context-questions.json", previous_questions)
+    _render_context_questions(case_dir, previous_questions)
+
+    iterations = prospective_iterations
+    _write_json(iterations_path, iterations)
+    if validation_status == "passed":
+        proposal["status"] = "implemented"
+        proposal["implementation"]["status"] = "validated"
+    else:
+        proposal["implementation"]["status"] = "failed"
+    proposal["engineering_evidence_ids"] = iteration["new_evidence_ids"]
+    proposals["case_revision"] = revision
+    _write_json(proposals_path, proposals)
+    _render_engineering_proposals(case_dir, proposals)
+    return {"status": status, "snapshot_id": to_snapshot, "iteration": iteration}
+
+
+def validate_engineering_iteration(
+    case_dir: Path,
+    iteration_id: str,
+    validation_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Promote a frozen failed iteration only after later sufficient validation succeeds."""
+    if not validation_results or any(item.get("passed") is not True for item in validation_results):
+        raise ValueError("Engineering iteration validation requires passing results")
+    case_dir = case_dir.resolve()
+    iterations_path = case_dir / "patent-engineering" / "iterations.json"
+    iterations = _load_json(iterations_path, "patent engineering iterations")
+    matches = [
+        item
+        for item in iterations.get("engineering_iterations", [])
+        if item.get("iteration_id") == iteration_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Unknown or duplicate engineering iteration: {iteration_id}")
+    iteration = matches[0]
+    if iteration.get("status") != "validation_failed":
+        raise ValueError("Only a validation-failed engineering iteration can be promoted")
+    iteration["test_results"].extend(validation_results)
+    iteration["validation_status"] = "passed"
+    iteration["status"] = "validated"
+    evidence_path = case_dir / "01-code-evidence-map.json"
+    evidence = _load_json(evidence_path, "evidence map")
+    bound_ids = set(iteration.get("new_evidence_ids", []))
+    for item in evidence.get("evidence", []):
+        if item.get("evidence_id") in bound_ids:
+            item["validation_status"] = "passed"
+    proposals_path = case_dir / "patent-engineering" / "proposals.json"
+    proposals = _load_json(proposals_path, "patent engineering proposals")
+    proposal = next(
+        (
+            item
+            for item in proposals.get("proposals", [])
+            if item.get("proposal_id") == iteration.get("proposal_id")
+        ),
+        None,
+    )
+    if proposal is None:
+        raise ValueError("Engineering iteration proposal is missing")
+    proposal["status"] = "implemented"
+    proposal["implementation"]["status"] = "validated"
+    errors = validate_schema(iterations, "engineering-iterations.schema.json")
+    errors.extend(validate_schema(evidence, "engineering-provenance.schema.json"))
+    errors.extend(validate_schema(proposals, "patent-engineering-proposals.schema.json"))
+    if errors:
+        raise ValueError("Invalid validated engineering iteration: " + "; ".join(errors))
+    _write_json(iterations_path, iterations)
+    _write_json(evidence_path, evidence)
+    _write_json(proposals_path, proposals)
+    _render_evidence_map(case_dir, evidence)
+    _render_engineering_proposals(case_dir, proposals)
+    return iteration
 
 
 def export_case_package(case_dir: Path, output_dir: Path) -> Path:
@@ -609,6 +1065,23 @@ def _prepare_stage_artifact(
         }
         _write_json(case_dir / "01-technical-disclosures.json", disclosures)
         _render_technical_disclosures(case_dir, disclosures)
+        if _is_methodology_v2(case_dir):
+            understanding = case_dir / "project-understanding"
+            understanding.mkdir(parents=True, exist_ok=True)
+            _write_json(understanding / "technical-model.json", {})
+            _render_project_technical_model(case_dir, {})
+            _write_json(
+                understanding / "search-feature-model.json",
+                {"features": [], "combination_hypotheses": []},
+            )
+            _render_search_feature_model(case_dir, {"features": []})
+            landscape = case_dir / "landscape-search"
+            _prepare_search_dir(landscape, purpose="landscape")
+            _write_json(
+                landscape / "prior-art-feature-matrix.json",
+                {"features": [], "landscape_conclusion": ""},
+            )
+            _render_landscape_feature_matrix(case_dir, {"features": []})
     elif stage == CaseStage.INVENTION_CANDIDATES:
         _write_json(case_dir / "02-invention-candidates.json", {"candidates": []})
         _render_invention_candidates(case_dir, {"candidates": []})
@@ -635,6 +1108,17 @@ def _prepare_stage_artifact(
                 "amendment_basis": {},
                 "sensitive_information": {},
                 "unimplemented_disclosures": [],
+                "provenance_summary": {
+                    "frozen_implementation_limitations": [],
+                    "td_only_limitations": [],
+                    "patent_engineering_limitations": [],
+                },
+                "inventorship_review": {
+                    "review_required": True,
+                    "skill_determination": "NOT_DETERMINED",
+                    "source_ids": [],
+                    "note": "需由专利专业人员结合人员实质贡献单独审查发明人资格",
+                },
             },
         )
         _render_final_audit(case_dir, {})
@@ -669,11 +1153,11 @@ def _prepare_stage_artifact(
             _render_claim_support_map(case_dir, {"limitations": []})
 
 
-def _prepare_search_dir(path: Path) -> None:
+def _prepare_search_dir(path: Path, *, purpose: str = "targeted") -> None:
     (path / "shannon").mkdir(parents=True, exist_ok=True)
     (path / "yjmm10").mkdir(parents=True, exist_ok=True)
     (path / "README.md").write_text(
-        "# 检索记录\n\n将结构化记录逐行写入 search-records.jsonl。"
+        f"# {purpose.title()} 检索记录\n\n将结构化记录逐行写入 search-records.jsonl。"
         "每行必须包含 database、search_date、query、candidate_id、result_count、"
         "reviewed_reference_ids、verified_urls、coverage_limitations。"
         "第二次检索还必须记录 claim_id、limitation_ids 和 search_scope。\n",
@@ -785,9 +1269,7 @@ def _validate_snapshot(case_dir: Path, _: dict[str, Any]) -> list[str]:
     return errors
 
 
-def _validate_effect_basis(
-    statement: str, effect_basis: Any, label: str
-) -> list[str]:
+def _validate_effect_basis(statement: str, effect_basis: Any, label: str) -> list[str]:
     errors: list[str] = []
     quantified = re.search(
         r"\d+(?:\.\d+)?\s*(?:%|％|倍|ms|毫秒|秒|分钟|MB|GB|GiB|MiB)",
@@ -856,6 +1338,10 @@ def _technical_disclosure_state(
 
     for item in disclosure_items:
         disclosure_id = item.get("disclosure_id", "")
+        if _is_methodology_v2(case_dir):
+            origin = item.get("origin_provenance", {})
+            if not origin or origin.get("inventorship_review_required") is not True:
+                errors.append(f"Technical disclosure {disclosure_id} lacks human-origin provenance")
         question = question_map.get(item.get("question_id"))
         if not question or question.get("category") != "technical":
             errors.append(f"Technical disclosure {disclosure_id} lacks a technical source question")
@@ -961,12 +1447,181 @@ def _validate_evidence_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
             )
     if len(identifiers) != len(set(identifiers)):
         errors.append("Evidence IDs must be unique")
+    engineering_evidence = [
+        item
+        for item in evidence_map.get("evidence", [])
+        if any(
+            item.get(field) for field in ("snapshot_id", "engineering_iteration_id", "proposal_id")
+        )
+    ]
+    if engineering_evidence:
+        try:
+            iterations = _load_json(
+                case_dir / "patent-engineering" / "iterations.json",
+                "patent engineering iterations",
+            )
+            proposals = _load_json(
+                case_dir / "patent-engineering" / "proposals.json",
+                "patent engineering proposals",
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            iteration_map = {
+                item.get("iteration_id"): item
+                for item in iterations.get("engineering_iterations", [])
+            }
+            proposal_map = {
+                item.get("proposal_id"): item for item in proposals.get("proposals", [])
+            }
+            for item in engineering_evidence:
+                evidence_id = item.get("evidence_id")
+                if not all(
+                    item.get(field)
+                    for field in (
+                        "snapshot_id",
+                        "engineering_iteration_id",
+                        "proposal_id",
+                        "validation_status",
+                    )
+                ):
+                    errors.append(
+                        f"Patent Engineering evidence {evidence_id} lacks full lineage binding"
+                    )
+                    continue
+                iteration = iteration_map.get(item.get("engineering_iteration_id"))
+                if (
+                    not iteration
+                    or iteration.get("proposal_id") != item.get("proposal_id")
+                    or iteration.get("to_snapshot") != item.get("snapshot_id")
+                    or evidence_id not in iteration.get("new_evidence_ids", [])
+                ):
+                    errors.append(
+                        f"Patent Engineering evidence {evidence_id} has inconsistent lineage"
+                    )
+                    continue
+                expected_validation = iteration.get("validation_status")
+                expected_eligibility = bool(
+                    proposal_map.get(item.get("proposal_id"), {})
+                    .get("screening", {})
+                    .get("patent_distinction_eligible")
+                )
+                if item.get("validation_status") != expected_validation:
+                    errors.append(
+                        f"Patent Engineering evidence {evidence_id} has stale validation status"
+                    )
+                if item.get("novelty_distinction_eligible") != expected_eligibility:
+                    errors.append(
+                        f"Patent Engineering evidence {evidence_id} has stale "
+                        "distinction eligibility"
+                    )
     disclosure_errors, disclosures, _ = _technical_disclosure_state(case_dir, evidence_map)
     errors.extend(disclosure_errors)
+    if _is_methodology_v2(case_dir):
+        errors.extend(_validate_project_understanding(case_dir, evidence_map))
     if not errors:
         _render_evidence_map(case_dir, evidence_map)
         _render_technical_disclosures(case_dir, disclosures)
     return errors
+
+
+def _validate_project_understanding(case_dir: Path, evidence_map: dict[str, Any]) -> list[str]:
+    try:
+        technical_model = _load_json(
+            case_dir / "project-understanding" / "technical-model.json",
+            "project technical model",
+        )
+        feature_model = _load_json(
+            case_dir / "project-understanding" / "search-feature-model.json",
+            "search feature model",
+        )
+        landscape_matrix = _load_json(
+            case_dir / "landscape-search" / "prior-art-feature-matrix.json",
+            "landscape feature matrix",
+        )
+    except ValueError as exc:
+        return [str(exc)]
+
+    errors = validate_schema(technical_model, "project-technical-model.schema.json")
+    errors.extend(validate_schema(feature_model, "search-feature-model.schema.json"))
+    errors.extend(validate_schema(landscape_matrix, "landscape-feature-matrix.schema.json"))
+    evidence_ids = {item.get("evidence_id") for item in evidence_map.get("evidence", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence_map)
+    errors.extend(disclosure_errors)
+
+    def validate_evidence_refs(value: Any, label: str) -> None:
+        if isinstance(value, dict):
+            refs = set(value.get("engineering_evidence_ids", []))
+            if refs - evidence_ids:
+                errors.append(f"{label} references unknown engineering evidence")
+            for child in value.values():
+                validate_evidence_refs(child, label)
+        elif isinstance(value, list):
+            for child in value:
+                validate_evidence_refs(child, label)
+
+    validate_evidence_refs(technical_model, "Project technical model")
+    feature_ids: list[str] = []
+    for feature in feature_model.get("features", []):
+        feature_id = str(feature.get("feature_id", ""))
+        feature_ids.append(feature_id)
+        if set(feature.get("engineering_evidence_ids", [])) - evidence_ids:
+            errors.append(f"Search feature {feature_id} references unknown engineering evidence")
+        if set(feature.get("technical_disclosure_ids", [])) - approved_td_ids:
+            errors.append(
+                f"Search feature {feature_id} references unavailable technical disclosure"
+            )
+    if len(feature_ids) != len(set(feature_ids)):
+        errors.append("Search feature IDs must be unique")
+    known_features = set(feature_ids)
+    for combination in feature_model.get("combination_hypotheses", []):
+        if set(combination.get("feature_ids", [])) - known_features:
+            errors.append(
+                "Search combination "
+                f"{combination.get('combination_id')} references unknown features"
+            )
+
+    search_errors, numbered = _read_search_records(case_dir / "landscape-search")
+    errors.extend(search_errors)
+    records = {record.get("record_id"): record for _, record in numbered}
+    covered_features: set[str] = set()
+    has_combination_search = False
+    for record in records.values():
+        scope = record.get("search_scope")
+        if scope not in {"landscape_feature", "landscape_combination"}:
+            errors.append(f"Landscape search record {record.get('record_id')} has invalid scope")
+            continue
+        record_features = set(record.get("feature_ids", []))
+        if record_features - known_features:
+            errors.append(
+                f"Landscape search record {record.get('record_id')} references unknown features"
+            )
+        covered_features.update(record_features)
+        if scope == "landscape_combination" and len(record_features) >= 2:
+            has_combination_search = True
+    missing_features = sorted(known_features - covered_features)
+    if missing_features:
+        errors.append("Landscape search does not cover features: " + ", ".join(missing_features))
+    if feature_model.get("combination_hypotheses") and not has_combination_search:
+        errors.append("Landscape search lacks a feature-combination query")
+
+    matrix_ids: list[str] = []
+    for row in landscape_matrix.get("features", []):
+        feature_id = str(row.get("feature_id", ""))
+        matrix_ids.append(feature_id)
+        if set(row.get("search_record_ids", [])) - set(records):
+            errors.append(
+                f"Landscape matrix feature {feature_id} references unknown search records"
+            )
+    if set(matrix_ids) != known_features:
+        errors.append("Landscape feature matrix must cover exactly all search features")
+    if len(matrix_ids) != len(set(matrix_ids)):
+        errors.append("Landscape feature matrix IDs must be unique")
+    if not errors:
+        _render_project_technical_model(case_dir, technical_model)
+        _render_search_feature_model(case_dir, feature_model)
+        _render_landscape_feature_matrix(case_dir, landscape_matrix)
+    return _dedupe(errors)
 
 
 def _validate_invention_candidates(case_dir: Path, _: dict[str, Any]) -> list[str]:
@@ -979,6 +1634,23 @@ def _validate_invention_candidates(case_dir: Path, _: dict[str, Any]) -> list[st
     evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
     disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence)
     errors.extend(disclosure_errors)
+    feature_ids: set[str] = set()
+    landscape_record_ids: set[str] = set()
+    if _is_methodology_v2(case_dir):
+        try:
+            feature_model = _load_json(
+                case_dir / "project-understanding" / "search-feature-model.json",
+                "search feature model",
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            feature_ids = {
+                str(item.get("feature_id", "")) for item in feature_model.get("features", [])
+            }
+        search_errors, records = _read_search_records(case_dir / "landscape-search")
+        errors.extend(search_errors)
+        landscape_record_ids = {str(record.get("record_id", "")) for _, record in records}
     candidate_ids: list[str] = []
     for item in candidates.get("candidates", []):
         candidate_ids.append(item.get("candidate_id", ""))
@@ -992,9 +1664,25 @@ def _validate_invention_candidates(case_dir: Path, _: dict[str, Any]) -> list[st
         if unknown_td:
             errors.append(
                 f"Candidate {item.get('candidate_id')} references unavailable "
-                "technical disclosure: "
-                + ", ".join(sorted(unknown_td))
+                "technical disclosure: " + ", ".join(sorted(unknown_td))
             )
+        if _is_methodology_v2(case_dir):
+            if not item.get("source_feature_ids"):
+                errors.append(
+                    f"Candidate {item.get('candidate_id')} lacks landscape feature provenance"
+                )
+            elif set(item.get("source_feature_ids", [])) - feature_ids:
+                errors.append(
+                    f"Candidate {item.get('candidate_id')} references unknown search features"
+                )
+            if not item.get("landscape_search_record_ids"):
+                errors.append(
+                    f"Candidate {item.get('candidate_id')} lacks landscape search provenance"
+                )
+            elif set(item.get("landscape_search_record_ids", [])) - landscape_record_ids:
+                errors.append(
+                    f"Candidate {item.get('candidate_id')} references unknown landscape searches"
+                )
         errors.extend(
             _validate_effect_basis(
                 "；".join(item.get("technical_effects", [])),
@@ -1043,9 +1731,205 @@ def _validate_feature_matrix(case_dir: Path, _: dict[str, Any]) -> list[str]:
         )
     if len(feature_ids) != len(set(feature_ids)):
         errors.append("Feature IDs must be unique")
+    if _is_methodology_v2(case_dir):
+        errors.extend(_validate_patent_engineering(case_dir))
     if not errors:
         _render_feature_matrix(case_dir, matrix)
     return errors
+
+
+def _validate_patent_engineering(case_dir: Path) -> list[str]:
+    try:
+        proposals = _load_json(
+            case_dir / "patent-engineering" / "proposals.json",
+            "patent engineering proposals",
+        )
+        iterations = _load_json(
+            case_dir / "patent-engineering" / "iterations.json",
+            "patent engineering iterations",
+        )
+        ranking = _load_json(case_dir / "02-candidate-ranking.json", "candidate ranking")
+        candidates = _load_json(case_dir / "02-invention-candidates.json", "invention candidates")
+        questions = _load_json(case_dir / "context-questions.json", "context questions")
+        evidence = _load_json(case_dir / "01-code-evidence-map.json", "evidence map")
+        features = _load_json(
+            case_dir / "project-understanding" / "search-feature-model.json",
+            "search feature model",
+        )
+    except ValueError as exc:
+        return [str(exc)]
+    errors = validate_schema(proposals, "patent-engineering-proposals.schema.json")
+    errors.extend(validate_schema(iterations, "engineering-iterations.schema.json"))
+    snapshots_dir = case_dir / "00-project-snapshot" / "snapshots"
+    known_snapshots = {path.parent.name for path in snapshots_dir.glob("S*/snapshot-manifest.json")}
+    if iterations.get("baseline_snapshot") not in known_snapshots:
+        errors.append("Patent Engineering baseline snapshot is missing")
+    if iterations.get("current_snapshot") not in known_snapshots:
+        errors.append("Patent Engineering current snapshot is missing")
+    evidence_ids = {item.get("evidence_id") for item in evidence.get("evidence", [])}
+    feature_ids = {item.get("feature_id") for item in features.get("features", [])}
+    candidate_ids = {item.get("candidate_id") for item in candidates.get("candidates", [])}
+    question_ids = {item.get("id") for item in questions.get("questions", [])}
+    disclosure_errors, _, approved_td_ids = _technical_disclosure_state(case_dir, evidence)
+    errors.extend(disclosure_errors)
+    search_errors, search_records = _read_search_records(case_dir / "03-prior-art-search")
+    errors.extend(search_errors)
+    proposal_search = {
+        str(record.get("record_id", "")): record
+        for _, record in search_records
+        if record.get("search_scope") == "engineering_proposal"
+    }
+    iteration_map = {
+        item.get("proposal_id"): item for item in iterations.get("engineering_iterations", [])
+    }
+    proposal_by_id = {item.get("proposal_id"): item for item in proposals.get("proposals", [])}
+    proposal_ids: list[str] = []
+    selected = ranking.get("selected_candidate_id")
+    ranked_selected = next(
+        (
+            item
+            for item in ranking.get("ranked_candidates", [])
+            if isinstance(item, dict) and item.get("candidate_id") == selected
+        ),
+        {},
+    )
+    selected_proposals = []
+    for proposal in proposals.get("proposals", []):
+        proposal_id = str(proposal.get("proposal_id", ""))
+        proposal_ids.append(proposal_id)
+        if proposal.get("candidate_id") not in candidate_ids:
+            errors.append(f"Proposal {proposal_id} references an unknown candidate")
+        if proposal.get("design_gap_question_id") not in question_ids:
+            errors.append(f"Proposal {proposal_id} references an unknown Design Gap question")
+        else:
+            linked_question = next(
+                item
+                for item in questions.get("questions", [])
+                if item.get("id") == proposal.get("design_gap_question_id")
+            )
+            if linked_question.get("gap_type") != "DESIGN_GAP":
+                errors.append(f"Proposal {proposal_id} is not linked to a Design Gap")
+        if proposal.get("candidate_id") == selected:
+            selected_proposals.append(proposal)
+        if set(proposal.get("source_feature_ids", [])) - feature_ids:
+            errors.append(f"Proposal {proposal_id} references unknown search features")
+        if set(proposal.get("engineering_evidence_ids", [])) - evidence_ids:
+            errors.append(f"Proposal {proposal_id} references unknown engineering evidence")
+        if set(proposal.get("technical_disclosure_ids", [])) - approved_td_ids:
+            errors.append(f"Proposal {proposal_id} references unavailable technical disclosure")
+        screening = proposal.get("screening", {})
+        if screening.get("overlap_risk") == "high" and screening.get("patent_distinction_eligible"):
+            errors.append(f"High-overlap proposal {proposal_id} cannot support patent distinction")
+        screening_ids = set(screening.get("search_record_ids", []))
+        if screening.get("status") == "completed":
+            if not screening_ids or screening_ids - set(proposal_search):
+                errors.append(f"Proposal {proposal_id} lacks valid prior-art screening records")
+            if any(
+                proposal_search[record_id].get("proposal_id") != proposal_id
+                for record_id in screening_ids & set(proposal_search)
+            ):
+                errors.append(f"Proposal {proposal_id} uses another proposal's search")
+        decision = proposal.get("user_decision", {}).get("decision")
+        status = proposal.get("status")
+        resulting_td = set(proposal.get("technical_disclosure_ids", []))
+        if decision in {"adopt", "modify"}:
+            if screening.get("status") != "completed":
+                errors.append(f"Proposal {proposal_id} was decided before prior-art screening")
+            if not resulting_td and status != "implemented":
+                errors.append(f"Adopted proposal {proposal_id} must produce TD or validated E")
+            if decision == "modify" and not any(
+                item.get("provenance") == "USER_CONFIRMED"
+                for item in proposal.get("parameters", [])
+            ):
+                errors.append(f"Modified proposal {proposal_id} lacks user-confirmed values")
+        elif decision in {"reject", "uncertain"} and resulting_td:
+            errors.append(f"Rejected or uncertain proposal {proposal_id} cannot produce TD")
+        implementation = proposal.get("implementation", {})
+        if implementation.get("authorized") and not implementation.get("authorization_source"):
+            errors.append(f"Proposal {proposal_id} implementation authorization lacks source")
+        if not implementation.get("authorized") and any(
+            (
+                implementation.get("authorization_source"),
+                implementation.get("authorization_purpose"),
+                implementation.get("status") != "not_requested",
+            )
+        ):
+            errors.append(f"Proposal {proposal_id} has inconsistent implementation authorization")
+        if (
+            screening.get("overlap_risk") == "high"
+            and implementation.get("authorized")
+            and implementation.get("authorization_purpose") != "real_engineering_value"
+        ):
+            errors.append(
+                f"High-overlap proposal {proposal_id} lacks real-engineering-value authority"
+            )
+        commit_authorization = proposal.get("commit_authorization", {})
+        if commit_authorization.get("authorized") and not commit_authorization.get(
+            "authorization_source"
+        ):
+            errors.append(f"Proposal {proposal_id} Git commit authorization lacks source")
+        if not commit_authorization.get("authorized") and any(
+            (
+                commit_authorization.get("authorization_source"),
+                commit_authorization.get("status") != "not_requested",
+                commit_authorization.get("commit_sha"),
+            )
+        ):
+            errors.append(f"Proposal {proposal_id} has inconsistent Git commit authorization")
+        if commit_authorization.get("status") == "committed" and not commit_authorization.get(
+            "commit_sha"
+        ):
+            errors.append(f"Proposal {proposal_id} committed status lacks commit SHA")
+        if implementation.get("status") == "validated":
+            if not implementation.get("authorized") or not implementation.get(
+                "authorization_source"
+            ):
+                errors.append(f"Proposal {proposal_id} implementation lacks user authorization")
+            iteration = iteration_map.get(proposal_id)
+            if not iteration or not iteration.get("new_evidence_ids"):
+                errors.append(
+                    f"Implemented proposal {proposal_id} lacks validated iteration evidence"
+                )
+            elif set(iteration.get("new_evidence_ids", [])) - evidence_ids:
+                errors.append(f"Implemented proposal {proposal_id} references unknown new evidence")
+            elif iteration.get("status") != "validated":
+                errors.append(f"Proposal {proposal_id} iteration is not validated")
+        elif implementation.get("status") == "failed":
+            errors.append(f"Proposal {proposal_id} has frozen but validation-failed implementation")
+        redesign_of = proposal.get("redesign_of")
+        if redesign_of:
+            parent = proposal_by_id.get(redesign_of)
+            if not parent or parent.get("screening", {}).get("overlap_risk") != "high":
+                errors.append(f"Proposal {proposal_id} redesign parent is not high-overlap")
+            if (
+                proposal.get("redesign_change_type") != "substantive_mechanism"
+                or not str(proposal.get("redesign_basis", "")).strip()
+            ):
+                errors.append(f"Proposal {proposal_id} lacks substantive redesign basis")
+        if status == "high_overlap_rejected" and screening.get("overlap_risk") != "high":
+            errors.append(f"Proposal {proposal_id} high-overlap status lacks search conclusion")
+    if len(proposal_ids) != len(set(proposal_ids)):
+        errors.append("Patent engineering proposal IDs must be unique")
+    redesign_parents = [
+        proposal.get("redesign_of")
+        for proposal in proposals.get("proposals", [])
+        if proposal.get("redesign_of")
+    ]
+    if len(redesign_parents) != len(set(redesign_parents)):
+        errors.append("A high-overlap proposal permits only one substantive redesign attempt")
+    if any(proposal_by_id.get(parent, {}).get("redesign_of") for parent in redesign_parents):
+        errors.append("Patent Engineering redesigns cannot be chained")
+    if ranked_selected.get("requires_patent_engineering"):
+        if not selected_proposals:
+            errors.append("Selected candidate requires a Patent Engineering proposal")
+        elif not any(
+            proposal.get("status") in {"adopted", "modified", "implemented"}
+            for proposal in selected_proposals
+        ):
+            errors.append("Selected candidate's Patent Engineering is not approved and usable")
+    if not errors:
+        _render_engineering_proposals(case_dir, proposals)
+    return _dedupe(errors)
 
 
 def _validate_table(path: Path, minimum: int, maximum: int | None = None) -> list[str]:
@@ -1078,7 +1962,18 @@ def _validate_first_search(case_dir: Path, _: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         return [str(exc)]
     required = {item.get("candidate_id", "") for item in candidates.get("candidates", [])}
-    return _validate_search(case_dir / "03-prior-art-search", required)
+    errors = _validate_search(case_dir / "03-prior-art-search", required)
+    if _is_methodology_v2(case_dir):
+        _, records = _read_search_records(case_dir / "03-prior-art-search")
+        targeted = {
+            str(record.get("candidate_id", ""))
+            for _, record in records
+            if record.get("search_scope") == "candidate_targeted"
+        }
+        missing = sorted(required - targeted)
+        if missing:
+            errors.append("Targeted search does not cover candidates: " + ", ".join(missing))
+    return _dedupe(errors)
 
 
 def _read_search_records(
@@ -1109,6 +2004,22 @@ def _read_search_records(
             f"Search line {line_number}: {error}"
             for error in validate_schema(record, "case-search-record.schema.json")
         )
+        scope = record.get("search_scope")
+        if scope in {"landscape_feature", "landscape_combination"}:
+            if not record.get("feature_ids"):
+                errors.append(f"Search line {line_number} lacks feature_ids for landscape scope")
+            if scope == "landscape_combination" and len(record.get("feature_ids", [])) < 2:
+                errors.append(
+                    f"Search line {line_number} landscape combination requires multiple features"
+                )
+        elif scope == "candidate_targeted" and not record.get("candidate_id"):
+            errors.append(f"Search line {line_number} lacks candidate_id for targeted scope")
+        elif scope == "engineering_proposal" and not record.get("proposal_id"):
+            errors.append(f"Search line {line_number} lacks proposal_id for proposal scope")
+        elif scope in FINAL_SEARCH_SCOPES and (
+            not record.get("claim_id") or not record.get("limitation_ids")
+        ):
+            errors.append(f"Search line {line_number} lacks claim coverage for final scope")
         record_ids.append(str(record.get("record_id", "")))
         if record.get("result_count", 0) > 0 and not record.get("reviewed_reference_ids"):
             errors.append(f"Search line {line_number} returned results but reviewed no references")
@@ -1129,6 +2040,51 @@ def _validate_ranking(case_dir: Path, _: dict[str, Any]) -> list[str]:
     except ValueError as exc:
         return [str(exc)]
     errors = []
+    if _is_methodology_v2(case_dir):
+        errors.extend(validate_schema(ranking, "candidate-ranking.schema.json"))
+        try:
+            candidates = _load_json(
+                case_dir / "02-invention-candidates.json", "invention candidates"
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+            candidate_ids: set[str] = set()
+        else:
+            candidate_ids = {
+                str(item.get("candidate_id", "")) for item in candidates.get("candidates", [])
+            }
+        search_errors, records = _read_search_records(case_dir / "03-prior-art-search")
+        errors.extend(search_errors)
+        targeted_records = {
+            str(record.get("record_id", "")): record
+            for _, record in records
+            if record.get("search_scope") == "candidate_targeted"
+        }
+        ranked_candidate_ids: list[str] = []
+        for item in ranking.get("ranked_candidates", []):
+            if not isinstance(item, dict):
+                continue
+            candidate_id = str(item.get("candidate_id", ""))
+            ranked_candidate_ids.append(candidate_id)
+            if candidate_id not in candidate_ids:
+                errors.append(f"Ranking references unknown candidate {candidate_id}")
+            search_ids = set(item.get("targeted_search_record_ids", []))
+            if search_ids - set(targeted_records):
+                errors.append(f"Ranking {candidate_id} references unknown targeted searches")
+            if any(
+                targeted_records[record_id].get("candidate_id") != candidate_id
+                for record_id in search_ids & set(targeted_records)
+            ):
+                errors.append(f"Ranking {candidate_id} uses another candidate's search")
+        if set(ranked_candidate_ids) != candidate_ids:
+            errors.append("Candidate ranking must assess exactly all candidates")
+        dispositions = {
+            item.get("candidate_id"): item.get("disposition")
+            for item in ranking.get("ranked_candidates", [])
+            if isinstance(item, dict)
+        }
+        if dispositions.get(ranking.get("selected_candidate_id")) != "selected":
+            errors.append("Selected candidate must have selected disposition")
     if not ranking.get("ranked_candidates"):
         errors.append("Candidate ranking must include ranked_candidates")
     if not ranking.get("selected_candidate_id"):
@@ -1147,7 +2103,7 @@ def _validate_ranking(case_dir: Path, _: dict[str, Any]) -> list[str]:
         errors.append("human_confirmation_required must equal strategic_ambiguity")
     if ambiguous and not ranking.get("human_confirmation"):
         errors.append("Strategically ambiguous ranking requires human_confirmation")
-    return errors
+    return _dedupe(errors)
 
 
 def _validate_draft(path: Path) -> list[str]:
@@ -1375,6 +2331,38 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
         for entry in structure.get("independent_claims", [])
         if isinstance(entry, dict)
     }
+    implemented_td_evidence: dict[str, set[str]] = {}
+    distinction_ineligible_evidence: set[str] = set()
+    distinction_ineligible_td: set[str] = set()
+    if _is_methodology_v2(case_dir):
+        try:
+            proposals = _load_json(
+                case_dir / "patent-engineering" / "proposals.json",
+                "patent engineering proposals",
+            )
+            iterations = _load_json(
+                case_dir / "patent-engineering" / "iterations.json",
+                "patent engineering iterations",
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            new_evidence_by_proposal = {
+                item.get("proposal_id"): set(item.get("new_evidence_ids", []))
+                for item in iterations.get("engineering_iterations", [])
+            }
+            for proposal in proposals.get("proposals", []):
+                if not proposal.get("screening", {}).get("patent_distinction_eligible", True):
+                    distinction_ineligible_td.update(proposal.get("technical_disclosure_ids", []))
+                    distinction_ineligible_evidence.update(
+                        new_evidence_by_proposal.get(proposal.get("proposal_id"), set())
+                    )
+                if proposal.get("implementation", {}).get("status") != "validated":
+                    continue
+                for disclosure_id in proposal.get("technical_disclosure_ids", []):
+                    implemented_td_evidence.setdefault(disclosure_id, set()).update(
+                        new_evidence_by_proposal.get(proposal.get("proposal_id"), set())
+                    )
     for item in support.get("limitations", []):
         limitation_id = item.get("limitation_id", "")
         mapped.append(limitation_id)
@@ -1386,6 +2374,26 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
             errors.append(
                 f"Claim support {limitation_id} references unavailable technical disclosure"
             )
+        distinguishing_ids = {
+            limitation
+            for claim in structure.get("independent_claims", [])
+            for limitation in claim.get("distinguishing_limitation_ids", [])
+        }
+        if limitation_id in distinguishing_ids and (
+            distinction_ineligible_evidence.intersection(item.get("engineering_evidence_ids", []))
+            or distinction_ineligible_td.intersection(item.get("technical_disclosure_ids", []))
+        ):
+            errors.append(
+                f"Claim support {limitation_id} uses high-overlap Patent Engineering "
+                "as a novelty/inventive-step distinction"
+            )
+        for disclosure_id in item.get("technical_disclosure_ids", []):
+            preferred = implemented_td_evidence.get(disclosure_id, set())
+            if preferred and not preferred.intersection(item.get("engineering_evidence_ids", [])):
+                errors.append(
+                    f"Claim support {limitation_id} must prefer implemented engineering evidence "
+                    f"for {disclosure_id}"
+                )
         if item.get("claim_id") in independent_engineering_anchors:
             independent_engineering_anchors[item["claim_id"]].update(
                 item.get("engineering_evidence_ids", [])
@@ -1408,8 +2416,7 @@ def _validate_support_map(case_dir: Path, _: dict[str, Any]) -> list[str]:
     )
     if unanchored:
         errors.append(
-            "Independent claims must retain engineering-evidence anchors: "
-            + ", ".join(unanchored)
+            "Independent claims must retain engineering-evidence anchors: " + ", ".join(unanchored)
         )
     if not errors:
         _render_claim_support_map(case_dir, support)
@@ -1695,8 +2702,7 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
         in {"partially_implemented", "designed_not_implemented"}
     }
     reported = {
-        item.get("disclosure_id"): item
-        for item in audit.get("unimplemented_disclosures", [])
+        item.get("disclosure_id"): item for item in audit.get("unimplemented_disclosures", [])
     }
     if set(reported) != expected_unimplemented:
         errors.append(
@@ -1713,6 +2719,67 @@ def _validate_final_audit(case_dir: Path, _: dict[str, Any]) -> list[str]:
                 "Final audit has stale implementation status for technical disclosure "
                 f"{disclosure_id}"
             )
+    if _is_methodology_v2(case_dir):
+        try:
+            iterations = _load_json(
+                case_dir / "patent-engineering" / "iterations.json",
+                "patent engineering iterations",
+            )
+            proposals = _load_json(
+                case_dir / "patent-engineering" / "proposals.json",
+                "patent engineering proposals",
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            engineered_evidence = {
+                evidence_id
+                for iteration in iterations.get("engineering_iterations", [])
+                for evidence_id in iteration.get("new_evidence_ids", [])
+            }
+            expected_summary = {
+                "frozen_implementation_limitations": sorted(
+                    item.get("limitation_id", "")
+                    for item in support.get("limitations", [])
+                    if item.get("engineering_evidence_ids")
+                ),
+                "td_only_limitations": sorted(
+                    item.get("limitation_id", "")
+                    for item in support.get("limitations", [])
+                    if item.get("technical_disclosure_ids")
+                    and not item.get("engineering_evidence_ids")
+                ),
+                "patent_engineering_limitations": sorted(
+                    item.get("limitation_id", "")
+                    for item in support.get("limitations", [])
+                    if engineered_evidence.intersection(item.get("engineering_evidence_ids", []))
+                ),
+            }
+            actual_summary = {
+                key: sorted(value) for key, value in audit.get("provenance_summary", {}).items()
+            }
+            if actual_summary != expected_summary:
+                errors.append("Final audit provenance summary is stale or incomplete")
+            expected_origin_ids = {
+                item.get("proposal_id") for item in proposals.get("proposals", [])
+            }
+            expected_origin_ids.update(
+                item.get("disclosure_id")
+                for item in disclosures.get("disclosures", [])
+                if item.get("lifecycle_status") == "active"
+            )
+            expected_origin_ids.update(
+                item.get("iteration_id") for item in iterations.get("engineering_iterations", [])
+            )
+            inventorship_review = audit.get("inventorship_review", {})
+            if (
+                inventorship_review.get("review_required") is not True
+                or inventorship_review.get("skill_determination") != "NOT_DETERMINED"
+                or set(inventorship_review.get("source_ids", [])) != expected_origin_ids
+            ):
+                errors.append(
+                    "Final audit must require separate inventorship review for all SP/TD/IT origins"
+                )
     if not errors:
         _render_final_audit(case_dir, audit)
     return errors
@@ -1739,10 +2806,7 @@ def _validate_content_ready(case_dir: Path, _: dict[str, Any]) -> list[str]:
         for item in ledger.get("questions", [])
         if item.get("category") == "technical"
         and item.get("blocking") is True
-        and (
-            item.get("status") != "resolved"
-            or item.get("resolution_type") == "unknown"
-        )
+        and (item.get("status") != "resolved" or item.get("resolution_type") == "unknown")
     ]
     if unresolved:
         errors.append("Unresolved blocking technical questions: " + ", ".join(unresolved))
@@ -2057,14 +3121,192 @@ def _markdown_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _render_project_technical_model(case_dir: Path, data: dict[str, Any]) -> None:
+    path = case_dir / "project-understanding" / "technical-model.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# 项目技术模型",
+        "",
+        "> 本文件由 technical-model.json 自动生成；它证明项目已被整体理解，不替代工程证据。",
+        "",
+    ]
+    headings = (
+        ("technical_problem", "主要技术问题"),
+        ("system_boundary", "系统边界"),
+        ("inputs", "输入"),
+        ("core_modules", "核心模块"),
+        ("processing_chains", "关键处理链"),
+        ("data_state_transitions", "数据与状态变化"),
+        ("outputs", "输出"),
+        ("technical_effects", "技术效果"),
+        ("core_mechanisms", "核心技术机制"),
+        ("ordinary_components", "普通工程组件"),
+        ("business_ui_components", "业务规则与 UI"),
+        ("third_party_dependencies", "第三方通用能力"),
+    )
+    for key, heading in headings:
+        lines.extend([f"## {heading}", ""])
+        value = data.get(key, [])
+        items = value if isinstance(value, list) else [value]
+        if not items or items == [{}]:
+            lines.append("- 【待建立】")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            suffix = f"（{item.get('reason')}）" if item.get("reason") else ""
+            lines.append(
+                f"- {item.get('statement', '')}{suffix} "
+                f"[{_markdown_cell(item.get('engineering_evidence_ids', []))}]"
+            )
+        lines.append("")
+    lines.extend(["## 不确定项", ""])
+    for item in data.get("uncertainties", []):
+        lines.append(
+            f"- [{item.get('gap_type', '')}] {item.get('statement', '')} "
+            f"(blocking={item.get('blocking', False)})"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_search_feature_model(case_dir: Path, data: dict[str, Any]) -> None:
+    path = case_dir / "project-understanding" / "search-feature-model.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# 可检索技术特征模型",
+        "",
+        "> 技术特征不是创新结论；必须先通过 landscape search 判断拥挤度和组合机会。",
+        "",
+        "| 特征 | 技术表述 | 技术角色 | E | TD | 检索词 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for item in data.get("features", []):
+        terms = item.get("search_terms", {})
+        flattened = [term for values in terms.values() for term in values]
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("feature_id", ""),
+                    item.get("statement", ""),
+                    item.get("technical_role", ""),
+                    item.get("engineering_evidence_ids", []),
+                    item.get("technical_disclosure_ids", []),
+                    flattened,
+                )
+            )
+            + " |"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_landscape_feature_matrix(case_dir: Path, data: dict[str, Any]) -> None:
+    path = case_dir / "landscape-search" / "prior-art-feature-matrix.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Landscape 现有技术特征矩阵",
+        "",
+        "| 特征 | 检索记录 | 文献披露 | 拥挤度 | 机会判断 |",
+        "|---|---|---|---|---|",
+    ]
+    for item in data.get("features", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("feature_id", ""),
+                    item.get("search_record_ids", []),
+                    item.get("references", {}),
+                    item.get("crowding", ""),
+                    item.get("opportunity_note", ""),
+                )
+            )
+            + " |"
+        )
+    lines.extend(["", "## Landscape 结论", "", data.get("landscape_conclusion", "")])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _render_engineering_proposals(case_dir: Path, data: dict[str, Any]) -> None:
+    path = case_dir / "patent-engineering" / "proposals.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Patent Engineering Reference Implementation Proposals",
+        "",
+        "> SP 是 Agent 参考方案，不是 E、TD 或 Claim Support。",
+        "",
+        "| Proposal | Candidate | 状态 | 方案摘要 | 查新 | 区别资格 | 用户决定 | "
+        "实施授权 | Commit 授权 | 来源/人员贡献 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for item in data.get("proposals", []):
+        lines.append(
+            "| "
+            + " | ".join(
+                _markdown_cell(value)
+                for value in (
+                    item.get("proposal_id", ""),
+                    item.get("candidate_id", ""),
+                    item.get("status", ""),
+                    item.get("summary", ""),
+                    item.get("screening", {}),
+                    item.get("screening", {}).get("patent_distinction_eligible", ""),
+                    item.get("user_decision", {}).get("decision", ""),
+                    item.get("implementation", {}),
+                    item.get("commit_authorization", {}),
+                    item.get("origin_provenance", {}),
+                )
+            )
+            + " |"
+        )
+        lines.extend(
+            [
+                "",
+                f"## {item.get('proposal_id', '')}: {item.get('summary', '')}",
+                "",
+                f"- Design Gap：{item.get('problem', '')}",
+                f"- 输入：{_markdown_cell(item.get('inputs', []))}",
+                f"- 数据表示：{_markdown_cell(item.get('data_representation', []))}",
+                f"- 处理步骤：{_markdown_cell(item.get('processing_steps', []))}",
+                f"- 决策规则：{_markdown_cell(item.get('decision_rules', []))}",
+                f"- 状态变化：{_markdown_cell(item.get('state_changes', []))}",
+                f"- 输出：{_markdown_cell(item.get('outputs', []))}",
+                f"- 边界处理：{_markdown_cell(item.get('boundary_handling', []))}",
+                f"- 冲突处理：{_markdown_cell(item.get('conflict_handling', []))}",
+                f"- 集成位置：{_markdown_cell(item.get('integration_points', []))}",
+                f"- 直接技术效果：{item.get('technical_effect', '')}",
+                "",
+                "| 参数 | 值 | 来源 | 理由 |",
+                "|---|---|---|---|",
+            ]
+        )
+        for parameter in item.get("parameters", []):
+            lines.append(
+                "| "
+                + " | ".join(
+                    _markdown_cell(value)
+                    for value in (
+                        parameter.get("name", ""),
+                        parameter.get("value", ""),
+                        parameter.get("provenance", ""),
+                        parameter.get("rationale", ""),
+                    )
+                )
+                + " |"
+            )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
     lines = [
         "# 技术证据地图",
         "",
         "> 本文件由 01-code-evidence-map.json 自动生成；请只编辑 JSON 事实源。",
         "",
-        "| 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | 效果依据 | 证据状态 |",
-        "|---|---|---|---|---|---|---|",
+        "| 证据编号 | 代码/文档证据 | 处理步骤 | 数据或状态变化 | 技术效果 | "
+        "效果依据 | 证据状态 | Snapshot | Iteration | Proposal | 验证 | 区别资格 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in data.get("evidence", []):
         source = item.get("source", {})
@@ -2083,6 +3325,11 @@ def _render_evidence_map(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("technical_effect", ""),
                     item.get("effect_basis", ""),
                     item.get("status", ""),
+                    item.get("snapshot_id", ""),
+                    item.get("engineering_iteration_id", ""),
+                    item.get("proposal_id", ""),
+                    item.get("validation_status", ""),
+                    item.get("novelty_distinction_eligible", ""),
                 )
             )
             + " |"
@@ -2097,8 +3344,9 @@ def _render_technical_disclosures(case_dir: Path, data: dict[str, Any]) -> None:
         "> 本文件由 01-technical-disclosures.json 自动生成；"
         "TD 是用户确认的技术披露，不是工程证据。",
         "",
-        "| 披露编号 | 来源问题 | 技术陈述 | 实现状态 | 充分公开 | 技术效果 | 效果依据 | 生命周期 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 披露编号 | 来源问题 | 技术陈述 | 实现状态 | 充分公开 | 技术效果 | 效果依据 | "
+        "来源类型 | 人员贡献 | 发明人复核 | 生命周期 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in data.get("disclosures", []):
         effect = item.get("technical_effect", {})
@@ -2114,14 +3362,15 @@ def _render_technical_disclosures(case_dir: Path, data: dict[str, Any]) -> None:
                     item.get("enablement", {}).get("status", ""),
                     effect.get("statement", ""),
                     effect.get("effect_basis", ""),
+                    item.get("origin_provenance", {}).get("origin_type", ""),
+                    item.get("origin_provenance", {}).get("human_contributions", []),
+                    item.get("origin_provenance", {}).get("inventorship_review_required", ""),
                     item.get("lifecycle_status", ""),
                 )
             )
             + " |"
         )
-    (case_dir / "01-technical-disclosures.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
-    )
+    (case_dir / "01-technical-disclosures.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _render_invention_candidates(case_dir: Path, data: dict[str, Any]) -> None:
@@ -2338,6 +3587,31 @@ def _render_final_audit(case_dir: Path, data: dict[str, Any]) -> None:
                 "",
             ]
         )
+    summary = data.get("provenance_summary", {})
+    lines.extend(
+        [
+            "## 权利要求来源汇总",
+            "",
+            "- 当前冻结实现："
+            + _markdown_cell(summary.get("frozen_implementation_limitations", [])),
+            "- 仅由充分公开 TD 支持：" + _markdown_cell(summary.get("td_only_limitations", [])),
+            "- Patent Engineering 后新增实现："
+            + _markdown_cell(summary.get("patent_engineering_limitations", [])),
+            "",
+        ]
+    )
+    inventorship = data.get("inventorship_review", {})
+    lines.extend(
+        [
+            "## 发明人贡献单独复核",
+            "",
+            f"- 必须复核：{inventorship.get('review_required', '')}",
+            f"- Skill 判断：{inventorship.get('skill_determination', '')}",
+            f"- 涉及来源：{_markdown_cell(inventorship.get('source_ids', []))}",
+            f"- 说明：{inventorship.get('note', '')}",
+            "",
+        ]
+    )
     (case_dir / "13-final-audit.md").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -2387,6 +3661,13 @@ def _markdown_data_rows(path: Path) -> list[list[str]]:
 
 def _load_status(case_dir: Path) -> dict[str, Any]:
     return _load_json(case_dir / "case-status.json", "case status")
+
+
+def _is_methodology_v2(case_dir: Path) -> bool:
+    try:
+        return int(_load_status(case_dir).get("methodology_version", 1)) >= 2
+    except (TypeError, ValueError):
+        return False
 
 
 def _validate_history(status: dict[str, Any]) -> list[str]:

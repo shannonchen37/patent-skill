@@ -7,7 +7,7 @@ Use one `patent-case/` directory as the durable case record. Shannon `patent-ski
 Before substantive analysis:
 
 1. Identify an exact project source and choose one evidence type: `git_commit`, `uploaded_archive`, or `directory_manifest`.
-2. Record the Git context when available, archive or deterministic-manifest digest, per-file SHA-256 values, exclusions, and sensitive-file warnings in `00-project-snapshot/snapshot-manifest.json`.
+2. Record the Git context when available, archive or deterministic-manifest digest, per-file SHA-256 values, exclusions, and sensitive-file warnings in `00-project-snapshot/snapshot-manifest.json`. Preserve the same manifest as immutable baseline `00-project-snapshot/snapshots/S001/snapshot-manifest.json`.
 3. Do not copy secrets, customer data, production endpoints, third-party dependency source, generated output, virtual environments, or unrelated business material into the case.
 4. Record project start, first implementation, public disclosures, and substantive contributors as filing-context questions. Do not block technical analysis on them unless known facts directly affect the present novelty, entitlement, or scope decision.
 5. Do not create commits or tags without explicit authorization. Freeze a dirty worktree using a deterministic directory manifest and disclose the limitation.
@@ -17,7 +17,7 @@ The snapshot proves only what material was analyzed. It does not prove inventors
 ## State discipline
 
 - Record questions and sourced answers in `context-questions.json`; `context-ledger.md` is its generated view.
-- Keep provenance types separate: `E###` identifies a frozen file/hash source; `TD###` identifies a user-confirmed technical disclosure; candidate completions remain non-factual hypotheses in the question ledger.
+- Keep provenance types separate: `E###` identifies a frozen file/hash source; `TD###` identifies a user-confirmed technical disclosure; `F###` identifies a provenance-bound search feature; `SP###` identifies a searched reference proposal but is never evidence. Candidate completions remain non-factual hypotheses in the question ledger.
 - A TD may describe an implemented-elsewhere, partially implemented, or designed-not-implemented mechanism, but only `enablement.status = sufficient` and active records may support downstream features or claims.
 - Advance only with `python -m patent_skill.cli case advance <case> <next-stage>`; the transition must be exactly one stage.
 - Reopen earlier substantive work only with `case revise <case> <stage> --reason ...`. Archive target and downstream artifacts under `revisions/Rnnn/`, increment the revision, and regenerate the reopened-stage template.
@@ -32,7 +32,13 @@ The enforced sequence is:
 
 `PROJECT_SNAPSHOT → EVIDENCE_MAP → INVENTION_CANDIDATES → FIRST_SEARCH → CANDIDATE_RANKING → FEATURE_MATRIX → CLAIMS_V1 → SPECIFICATION_V1 → SUPPORT_CANDIDATES → CLAIMS_V2 → CLAIM_SUPPORT_MAP → FINAL_SEARCH → APPLICATION_DRAFT → FINAL_AUDIT → CONTENT_READY_FOR_ATTORNEY_REVIEW → INDEPENDENT_AUDIT → DOCX_PACKAGE_RENDERED`.
 
-`EVIDENCE_MAP` validates both the engineering map and technical disclosures without adding a CaseStage. Confirmed but incomplete disclosures keep this gate open. `INVENTION_CANDIDATES` requires an `E###` project anchor per candidate. `FEATURE_MATRIX` may use either provenance type when TD enablement is sufficient.
+For methodology-version-2 cases, `EVIDENCE_MAP` also validates `project-understanding/technical-model.json`, `search-feature-model.json`, landscape search, and exact landscape-matrix coverage. Confirmed but incomplete disclosures keep this gate open. `INVENTION_CANDIDATES` stores provisional patent opportunities and requires an `E###` project anchor plus source-feature and landscape-search provenance. `FIRST_SEARCH` requires candidate-targeted coverage. Only `CANDIDATE_RANKING` makes a formal selection, bound to those searches.
+
+`FEATURE_MATRIX` may use E or an enablement-sufficient TD. It also validates `patent-engineering/proposals.json` and `iterations.json`. A selected candidate marked as requiring Patent Engineering cannot advance to Claims V1 until a searched proposal is adopted or modified and any implementation being relied upon is validated. A high-overlap proposal is never eligible as the novelty/inventive-step distinction. `PROPOSED_DEFAULT` values remain proposal-only.
+
+Proposal adoption, code implementation authorization, and Git commit authorization are separate records. A real implementation creates `S002+` and E bound to snapshot, iteration, and proposal. Failed validation remains frozen as truthful E with `validation_status=failed` but blocks the validated Gate; passing or otherwise sufficient validation promotes the iteration. Older snapshots remain intact, and formal revision makes prior downstream analysis stale.
+
+Every SP, TD, and Engineering Iteration records origin plus known human contributions. Final Audit must list those records for a separate inventorship review and state that the Skill made no inventorship determination.
 
 `CLAIMS_V2` requires both files. Independents use consecutive `[I<n>-L<n>]`; each dependent claim uses consecutive `[D<n>-L<n>]` for newly added limitations. The structure records dependencies and fallback priority. Markdown metadata is forbidden after formal claims begin.
 

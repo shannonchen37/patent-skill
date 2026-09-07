@@ -1,17 +1,57 @@
 # Architecture
 
-`SKILL.md` orchestrates judgment-heavy work and routes to focused references. The package provides secure snapshots, sequential advance plus audited revision, JSON Schema gates, independent/dependent limitation support, clean filing rendering, Claims-bound search, conditional evidence-bound figures, hash-bound final/independent audits, export, and OOXML validation.
+`SKILL.md` owns judgment-heavy orchestration. The Python package supplies deterministic snapshots, schemas, state transitions, revisions, claim/search/audit gates, clean filing rendering, export, and OOXML validation.
 
-Provenance types are deliberately separate:
+## Canonical provenance
 
 ```text
-E###  = frozen engineering evidence (file path + SHA-256)
-TD### = confirmed technical disclosure that passed enablement review
-Candidate Completion = Agent hypothesis for user confirmation only
+S### = immutable project snapshot
+E### = engineering evidence bound to one current-snapshot file hash
+TD### = user-confirmed, enablement-sufficient technical disclosure
+F### = searchable feature derived from E/approved TD
+SP### = searched Patent Engineering reference proposal; never evidence itself
 Prior Art = external disclosure, not project provenance
 Specification Support = application-text basis, not engineering proof
 ```
 
-An invention candidate and each independent claim retain at least one E anchor to the real project. Individual features and limitations may rely on active, enablement-sufficient TD records. Candidate completions can never be referenced downstream. Claim and search analyses carry snapshot identifiers and hashes so final review detects stale conclusions; formal Evidence Map revision archives TDs and reopens their promoted questions.
+Candidate Completion is a parameter-light question hypothesis. `PROPOSED_DEFAULT` exists only inside SP proposals. Neither can enter claims, figures, or support maps.
 
-Shannon `patent-skill` owns `patent-case/` and is the only canonical writer. Where `.json` and `.md` coexist, JSON is the fact source and Markdown is generated. yjmm10/patent-skills is an optional CNIPA search adapter. HuangXinzhe/cn-patent-drafting receives stable, read-only content only after `CONTENT_READY_FOR_ATTORNEY_REVIEW`; substantive findings return through a formal Shannon revision.
+## Data flow
+
+```text
+S snapshot
+  ├─ E evidence ───────────────┐
+  └─ confirmed TD ─────────────┤
+                               ↓
+                    Project Technical Model
+                               ↓
+                         F Search Features
+                               ↓
+                        Landscape Search
+                               ↓
+          Candidates → Targeted Search → Ranking
+                               ↓
+              optional SP → screening → user decision
+                  ├─ TD-only drafting path
+                  └─ authorized code implementation
+                         ↓
+                 new S + new E + formal revision
+                               ↓
+                   repeat understanding and search
+                               ↓
+                  Claims → Specification → Audits
+```
+
+## Staleness boundary
+
+`record_engineering_iteration()` accepts only a screened, adopted/modified proposal with separate implementation authority and real changed files. It freezes the next snapshot even when validation fails, binds each new E to snapshot/iteration/proposal, records `passed` or `failed`, archives downstream artifacts, and returns to `EVIDENCE_MAP`. Failed evidence is factual but cannot pass the validated-implementation Gate. Later sufficient validation may promote the same frozen iteration. Old snapshots remain immutable.
+
+Adoption, code-change authority, and Git commit authority are stored separately. High-overlap proposals set `patent_distinction_eligible = false`; implementation is permitted only under explicit real-engineering-value authority and cannot support a distinguishing limitation. One searched, substantive-mechanism redesign is permitted; terminology/parameter/form changes are not.
+
+SP, TD, and Engineering Iteration each carry origin and human-contribution records. Final Audit lists all such source IDs and sets inventorship to `NOT_DETERMINED`; the Skill never converts those records into an inventorship conclusion.
+
+Claims-V2 search sessions bind to claim/structure hashes. Application drafts and final/independent audits bind to exact source hashes. A changed upstream object therefore cannot silently reuse downstream conclusions.
+
+## Canonical ownership
+
+Shannon `patent-skill` is the only canonical writer. JSON is authoritative where JSON/Markdown pairs coexist. yjmm10/patent-skills is an optional search adapter. HuangXinzhe/cn-patent-drafting receives stable read-only content after content readiness and returns independent findings/DOCX; it does not reselect the invention or overwrite case facts.

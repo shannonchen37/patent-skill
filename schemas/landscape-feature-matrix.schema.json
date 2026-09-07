@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Landscape Prior-art Feature Matrix",
+  "type": "object",
+  "required": ["features", "landscape_conclusion"],
+  "properties": {
+    "features": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["feature_id", "search_record_ids", "references", "crowding", "opportunity_note"],
+        "properties": {
+          "feature_id": {"type": "string", "pattern": "^F[0-9]{3,}$"},
+          "search_record_ids": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^S[0-9]+$"}
+          },
+          "references": {
+            "type": "object", "minProperties": 1,
+            "additionalProperties": {"enum": ["disclosed", "partial", "not_disclosed", "uncertain"]}
+          },
+          "crowding": {"enum": ["low", "medium", "high"]},
+          "opportunity_note": {"type": "string", "minLength": 4}
+        },
+        "additionalProperties": false
+      }
+    },
+    "landscape_conclusion": {"type": "string", "minLength": 8}
+  },
+  "additionalProperties": false
+}
